@@ -1,0 +1,278 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------ */
+/*  tweakcn-style shadcn themes: default (whatsapp) + twitter + vercel */
+/*  Light + dark modes via .dark class (next-themes).                   */
+/*  WhatsApp light: outgoing = #d9fdd3, incoming = #ffffff               */
+/*  WhatsApp dark:  outgoing = #005c4b, incoming = #202c33               */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --radius: 0.625rem;
+
+  /* WhatsApp light palette */
+  --background: oklch(0.97 0.005 85);
+  --foreground: oklch(0.18 0.02 240);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.02 240);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.02 240);
+  --primary: oklch(0.55 0.16 160);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.94 0.01 240);
+  --secondary-foreground: oklch(0.25 0.02 240);
+  --muted: oklch(0.95 0.005 240);
+  --muted-foreground: oklch(0.48 0.02 240);
+  --accent: oklch(0.94 0.01 240);
+  --accent-foreground: oklch(0.2 0.02 240);
+  --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.9 0.005 240);
+  --input: oklch(0.9 0.005 240);
+  --ring: oklch(0.55 0.16 160);
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.18 0.02 240);
+  --sidebar-border: oklch(0.91 0.005 240);
+  --chat-pattern: oklch(0 0 0 / 0.06);
+  --success: oklch(0.55 0.16 160);
+  --tick-read: oklch(0.65 0.16 230);
+
+  /* WhatsApp authentic bubble colors */
+  --bubble-out: oklch(0.95 0.05 145);
+  --bubble-out-fg: oklch(0.15 0.02 240);
+  --bubble-in: oklch(1 0 0);
+  --bubble-in-fg: oklch(0.18 0.02 240);
+}
+
+.dark {
+  --background: oklch(0.15 0.015 220);
+  --foreground: oklch(0.94 0.005 240);
+  --card: oklch(0.18 0.015 220);
+  --card-foreground: oklch(0.94 0.005 240);
+  --popover: oklch(0.21 0.015 220);
+  --popover-foreground: oklch(0.94 0.005 240);
+  --primary: oklch(0.68 0.15 160);
+  --primary-foreground: oklch(0.12 0.01 220);
+  --secondary: oklch(0.24 0.015 220);
+  --secondary-foreground: oklch(0.92 0.005 240);
+  --muted: oklch(0.22 0.015 220);
+  --muted-foreground: oklch(0.65 0.02 240);
+  --accent: oklch(0.24 0.015 220);
+  --accent-foreground: oklch(0.92 0.005 240);
+  --destructive: oklch(0.6 0.2 25);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.25 0.015 220);
+  --input: oklch(0.25 0.015 220);
+  --ring: oklch(0.68 0.15 160);
+  --sidebar: oklch(0.17 0.015 220);
+  --sidebar-foreground: oklch(0.94 0.005 240);
+  --sidebar-border: oklch(0.23 0.015 220);
+  --chat-pattern: oklch(1 0 0 / 0.04);
+  --success: oklch(0.68 0.15 160);
+  --tick-read: oklch(0.72 0.14 230);
+
+  /* WhatsApp dark authentic bubble colors */
+  --bubble-out: oklch(0.42 0.09 160);
+  --bubble-out-fg: oklch(0.96 0.005 240);
+  --bubble-in: oklch(0.24 0.015 220);
+  --bubble-in-fg: oklch(0.94 0.005 240);
+}
+
+/* ---- Twitter preset ---- */
+:root[data-theme="twitter"] {
+  --primary: oklch(0.65 0.14 240);
+  --ring: oklch(0.65 0.14 240);
+  --success: oklch(0.65 0.14 240);
+  --bubble-out: oklch(0.93 0.04 240);
+  --bubble-out-fg: oklch(0.15 0.02 240);
+}
+.dark[data-theme="twitter"] {
+  --primary: oklch(0.7 0.13 240);
+  --primary-foreground: oklch(0.12 0.02 260);
+  --ring: oklch(0.7 0.13 240);
+  --success: oklch(0.7 0.13 240);
+  --bubble-out: oklch(0.45 0.12 240);
+  --bubble-out-fg: oklch(0.98 0 0);
+}
+
+/* ---- Vercel preset ---- */
+:root[data-theme="vercel"] {
+  --primary: oklch(0.25 0 0);
+  --primary-foreground: oklch(1 0 0);
+  --ring: oklch(0.25 0 0);
+  --success: oklch(0.45 0 0);
+  --bubble-out: oklch(0.92 0 0);
+  --bubble-out-fg: oklch(0.1 0 0);
+}
+.dark[data-theme="vercel"] {
+  --primary: oklch(0.92 0 0);
+  --primary-foreground: oklch(0.16 0 0);
+  --ring: oklch(0.92 0 0);
+  --success: oklch(0.8 0 0);
+  --bubble-out: oklch(0.3 0 0);
+  --bubble-out-fg: oklch(0.98 0 0);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-success: var(--success);
+  --color-tick-read: var(--tick-read);
+  --color-bubble-out: var(--bubble-out);
+  --color-bubble-out-fg: var(--bubble-out-fg);
+  --color-bubble-in: var(--bubble-in);
+  --color-bubble-in-fg: var(--bubble-in-fg);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html,
+  body {
+    height: 100%;
+    overscroll-behavior: none;
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans, "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Authentic WhatsApp doodle-style background */
+.chat-surface {
+  background-color: var(--background);
+  background-image: radial-gradient(var(--chat-pattern) 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
+}
+
+/* thin themed scrollbars */
+.nice-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.nice-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.nice-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.nice-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+/* Hide scrollbar completely while allowing full touch/mouse scrolling functionality */
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
+}
+
+@keyframes chat-fade-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-chat-in {
+  animation: chat-fade-in 0.12s ease-out;
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-3px); opacity: 1; }
+}
+.typing-dot {
+  animation: typing-bounce 1.2s infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.live-dot {
+  animation: live-pulse 1.6s infinite;
+}
+
+@keyframes pop-in {
+  0% { transform: scale(0.96); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-pop-in {
+  animation: pop-in 0.15s ease-out;
+}
+
+/* ------------------------------------------------------------------ */
+/*  highlight.js — One Dark theme (for fenced code blocks)             */
+/* ------------------------------------------------------------------ */
+.hljs { color: #abb2bf; background: #1e1e2e; }
+.hljs-comment, .hljs-quote { color: #5c6370; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag { color: #c678dd; }
+.hljs-type, .hljs-built_in, .hljs-builtin-name { color: #e5c07b; }
+.hljs-literal { color: #d19a66; }
+.hljs-number { color: #d19a66; }
+.hljs-string, .hljs-addition { color: #98c379; }
+.hljs-title, .hljs-section, .hljs-selector-id { color: #61afef; font-weight: bold; }
+.hljs-attr, .hljs-variable, .hljs-template-variable { color: #e06c75; }
+.hljs-name, .hljs-selector-class { color: #e06c75; }
+.hljs-params { color: #abb2bf; }
+.hljs-symbol, .hljs-bullet { color: #61afef; }
+.hljs-link { color: #61afef; text-decoration: underline; }
+.hljs-meta { color: #56b6c2; }
+.hljs-deletion { color: #e06c75; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: bold; }
+.hljs-regexp { color: #98c379; }
+.hljs-tag { color: #e06c75; }
+.hljs-name { color: #e06c75; }
+.hljs-attribute { color: #d19a66; }
+.hljs-selector-id { color: #61afef; }
+.hljs-selector-class { color: #e5c07b; }
+.hljs-selector-pseudo { color: #56b6c2; }
+
+/* Dark mode override for code blocks inside markdown */
+.dark .hljs { background: #11111b; }
+
+/* ------------------------------------------------------------------ */
+/*  Markdown body helpers (ChatGPT-style rendering)                    */
+/* ------------------------------------------------------------------ */
+.markdown-body pre code.hljs { padding: 0; background: transparent; }
+.markdown-body p code { font-size: 0.85em; }
+.markdown-body img { max-width: 100%; border-radius: 0.5rem; margin: 0.75rem 0; }
+.markdown-body a { text-decoration: underline; text-underline-offset: 2px; }
+.markdown-body ul { list-style-type: disc; }
+.markdown-body ol { list-style-type: decimal; }
+.markdown-body > :first-child { margin-top: 0; }
+.markdown-body > :last-child { margin-bottom: 0; }
