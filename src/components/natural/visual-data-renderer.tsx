@@ -8,9 +8,21 @@ import {
   Line,
   AreaChart,
   Area,
+  PieChart,
+  Pie,
+  Cell,
+  RadarChart,
+  Radar,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  ScatterChart,
+  Scatter,
+  ZAxis,
   XAxis,
   YAxis,
   CartesianGrid,
+  Legend,
   Tooltip as RechartsTooltip,
 } from "recharts";
 import {
@@ -19,16 +31,211 @@ import {
   Info,
   Sparkles,
   BarChart3,
+  ChartPie,
+  Radar as RadarIcon,
+  ChartScatter,
   Table as TableIcon,
 } from "lucide-react";
-import type { VisualData } from "@/lib/types";
+import type { VisualChart, VisualData } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 
 interface VisualDataRendererProps {
   data: VisualData | null | undefined;
 }
 
-const PALETTE = ["#00a884", "#2563eb", "#8b5cf6", "#f59e0b", "#ec4899", "#10b981"];
+const PALETTE = [
+  "#00a884",
+  "#2563eb",
+  "#8b5cf6",
+  "#f59e0b",
+  "#ec4899",
+  "#10b981",
+  "#f43f5e",
+  "#06b6d4",
+];
+
+/* Normalize whatever the model emits into a supported chart type */
+function normalizeChartType(raw: string | undefined): string {
+  const t = (raw || "bar").toLowerCase().trim();
+  if (t === "doughnut" || t === "donut") return "donut";
+  if (t === "circle") return "pie";
+  return t;
+}
+
+function chartTypeBadgeLabel(type: string): string {
+  return type.toUpperCase();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Fully dynamic chart: chooses rendering purely from chart.type      */
+/* ------------------------------------------------------------------ */
+function DynamicChart({ chart }: { chart: VisualChart }) {
+  const type = normalizeChartType(chart.type);
+  const nameKey = chart.xKey || "name";
+  const valueKeys =
+    Array.isArray(chart.yKeys) && chart.yKeys.length > 0 ? chart.yKeys : ["value"];
+  const tooltipStyle = { borderRadius: 8, fontSize: 12 };
+
+  /* ---- Pie / Donut: slices are rows (name = xKey, value = yKeys[0]) ---- */
+  if (type === "pie" || type === "donut") {
+    const pieData = chart.data.map((row) => ({
+      name: String(row[nameKey] ?? ""),
+      value: Number(row[valueKeys[0]]) || 0,
+    }));
+    return (
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={pieData}
+            dataKey="value"
+            nameKey="name"
+            cx="50%"
+            cy="46%"
+            innerRadius={type === "donut" ? "52%" : 0}
+            outerRadius="78%"
+            paddingAngle={2}
+            stroke="none"
+            label={false}
+          >
+            {pieData.map((_, i) => (
+              <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+            ))}
+          </Pie>
+          <RechartsTooltip contentStyle={tooltipStyle} />
+          <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />
+        </PieChart>
+      </ResponsiveContainer>
+    );
+  }
+
+  /* ---- Radar: multi-metric profile across categories ---- */
+  if (type === "radar") {
+    return (
+      <ResponsiveContainer width="100%" height="100%">
+        <RadarChart data={chart.data} cx="50%" cy="50%" outerRadius="72%">
+          <PolarGrid opacity={0.25} />
+          <PolarAngleAxis dataKey={nameKey} tick={{ fontSize: 10 }} />
+          <PolarRadiusAxis tick={{ fontSize: 9 }} />
+          <RechartsTooltip contentStyle={tooltipStyle} />
+          {valueKeys.map((k, i) => (
+            <Radar
+              key={k}
+              name={k}
+              dataKey={k}
+              stroke={PALETTE[i % PALETTE.length]}
+              fill={PALETTE[i % PALETTE.length]}
+              fillOpacity={0.28}
+            />
+          ))}
+          {valueKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />}
+        </RadarChart>
+      </ResponsiveContainer>
+    );
+  }
+
+  /* ---- Scatter: correlation between numeric x and y ---- */
+  if (type === "scatter") {
+    return (
+      <ResponsiveContainer width="100%" height="100%">
+        <ScatterChart>
+          <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+          <XAxis dataKey="x" type="number" name={nameKey} tick={{ fontSize: 11 }} />
+          <YAxis dataKey="y" type="number" tick={{ fontSize: 11 }} width={35} />
+          <ZAxis range={[60, 120]} />
+          <RechartsTooltip contentStyle={tooltipStyle} cursor={{ strokeDasharray: "3 3" }} />
+          {valueKeys.map((k, i) => (
+            <Scatter
+              key={k}
+              name={k}
+              fill={PALETTE[i % PALETTE.length]}
+              data={chart.data.map((row) => ({
+                x: Number(row[nameKey]) || 0,
+                y: Number(row[k]) || 0,
+              }))}
+            />
+          ))}
+          {valueKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />}
+        </ScatterChart>
+      </ResponsiveContainer>
+    );
+  }
+
+  /* ---- Line ---- */
+  if (type === "line") {
+    return (
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={chart.data}>
+          <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+          <XAxis dataKey={nameKey} tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 11 }} width={35} />
+          <RechartsTooltip contentStyle={tooltipStyle} />
+          {valueKeys.map((k, i) => (
+            <Line
+              key={k}
+              type="monotone"
+              dataKey={k}
+              stroke={PALETTE[i % PALETTE.length]}
+              strokeWidth={2.5}
+              dot={{ r: 3 }}
+            />
+          ))}
+          {valueKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />}
+        </LineChart>
+      </ResponsiveContainer>
+    );
+  }
+
+  /* ---- Area ---- */
+  if (type === "area") {
+    return (
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={chart.data}>
+          <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+          <XAxis dataKey={nameKey} tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 11 }} width={35} />
+          <RechartsTooltip contentStyle={tooltipStyle} />
+          {valueKeys.map((k, i) => (
+            <Area
+              key={k}
+              type="monotone"
+              dataKey={k}
+              stroke={PALETTE[i % PALETTE.length]}
+              fill={PALETTE[i % PALETTE.length]}
+              fillOpacity={0.2}
+            />
+          ))}
+          {valueKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />}
+        </AreaChart>
+      </ResponsiveContainer>
+    );
+  }
+
+  /* ---- Bar (default fallback for any unknown type) ---- */
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={chart.data}>
+        <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+        <XAxis dataKey={nameKey} tick={{ fontSize: 11 }} />
+        <YAxis tick={{ fontSize: 11 }} width={35} />
+        <RechartsTooltip contentStyle={tooltipStyle} />
+        {valueKeys.map((k, i) => (
+          <Bar key={k} dataKey={k} fill={PALETTE[i % PALETTE.length]} radius={[4, 4, 0, 0]} />
+        ))}
+        {valueKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />}
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+function ChartIcon({ type }: { type: string }) {
+  const t = normalizeChartType(type);
+  const cls = "size-4 text-primary";
+  if (t === "pie" || t === "donut") return <ChartPie className={cls} />;
+  if (t === "radar") return <RadarIcon className={cls} />;
+  if (t === "scatter") return <ChartScatter className={cls} />;
+  if (t === "line" || t === "area") return <TrendingUp className={cls} />;
+  return <BarChart3 className={cls} />;
+}
 
 export function VisualDataRenderer({ data }: VisualDataRendererProps) {
   if (!data) return null;
@@ -40,6 +247,8 @@ export function VisualDataRenderer({ data }: VisualDataRendererProps) {
   if (!hasMetrics && !hasChart && !hasTable && !data.summary && !data.callout) {
     return null;
   }
+
+  const chartType = hasChart ? normalizeChartType(data.chart!.type) : null;
 
   return (
     <div className="mt-3.5 space-y-3.5 pt-3 border-t border-border/50 text-foreground w-full">
@@ -72,8 +281,8 @@ export function VisualDataRenderer({ data }: VisualDataRendererProps) {
                       m.trend === "up"
                         ? "text-emerald-500"
                         : m.trend === "down"
-                        ? "text-rose-500"
-                        : "text-muted-foreground"
+                          ? "text-rose-500"
+                          : "text-muted-foreground"
                     }`}
                   >
                     {m.trend === "up" ? (
@@ -90,72 +299,21 @@ export function VisualDataRenderer({ data }: VisualDataRendererProps) {
         </div>
       )}
 
-      {/* 3. Interactive Chart (Bar, Line, Area) */}
+      {/* 3. Fully Dynamic Chart — bar, line, area, pie, donut, radar, scatter */}
       {hasChart && (
         <div className="rounded-xl border border-border/80 bg-card/90 p-3 sm:p-4 shadow-2xs space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <BarChart3 className="size-4 text-primary" />
+              <ChartIcon type={data.chart!.type} />
               <h4 className="text-xs font-semibold text-foreground">{data.chart!.title}</h4>
             </div>
             <Badge variant="outline" className="text-[10px] uppercase font-mono">
-              {data.chart!.type}
+              {chartTypeBadgeLabel(chartType || "bar")}
             </Badge>
           </div>
 
-          <div className="w-full h-52 sm:h-60 pt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              {data.chart!.type === "line" ? (
-                <LineChart data={data.chart!.data}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                  <XAxis dataKey={data.chart!.xKey} tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} width={35} />
-                  <RechartsTooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                  {data.chart!.yKeys.map((k, i) => (
-                    <Line
-                      key={k}
-                      type="monotone"
-                      dataKey={k}
-                      stroke={PALETTE[i % PALETTE.length]}
-                      strokeWidth={2.5}
-                      dot={{ r: 3 }}
-                    />
-                  ))}
-                </LineChart>
-              ) : data.chart!.type === "area" ? (
-                <AreaChart data={data.chart!.data}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                  <XAxis dataKey={data.chart!.xKey} tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} width={35} />
-                  <RechartsTooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                  {data.chart!.yKeys.map((k, i) => (
-                    <Area
-                      key={k}
-                      type="monotone"
-                      dataKey={k}
-                      stroke={PALETTE[i % PALETTE.length]}
-                      fill={PALETTE[i % PALETTE.length]}
-                      fillOpacity={0.2}
-                    />
-                  ))}
-                </AreaChart>
-              ) : (
-                <BarChart data={data.chart!.data}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                  <XAxis dataKey={data.chart!.xKey} tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} width={35} />
-                  <RechartsTooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                  {data.chart!.yKeys.map((k, i) => (
-                    <Bar
-                      key={k}
-                      dataKey={k}
-                      fill={PALETTE[i % PALETTE.length]}
-                      radius={[4, 4, 0, 0]}
-                    />
-                  ))}
-                </BarChart>
-              )}
-            </ResponsiveContainer>
+          <div className="w-full h-56 sm:h-64 pt-2">
+            <DynamicChart chart={data.chart!} />
           </div>
 
           {data.chart!.description && (

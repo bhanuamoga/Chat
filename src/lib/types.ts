@@ -94,7 +94,7 @@ export type VisualMetric = {
 };
 
 export type VisualChart = {
-  type: "bar" | "line" | "area" | "pie";
+  type: "bar" | "line" | "area" | "pie" | "donut" | "doughnut" | "radar" | "scatter";
   title: string;
   data: Record<string, string | number>[];
   xKey: string;

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Send,
+  ArrowUp,
   Loader2,
   Sparkles,
   Bot,
@@ -364,10 +364,7 @@ function SidebarHeader({ me, onNewChat }: { me: UserRow; onNewChat: () => void }
             <Sparkles className="size-4" />
           </span>
           <div>
-            <h2 className="text-sm font-semibold leading-tight">AI Chat</h2>
-            <span className="text-[10px] text-muted-foreground font-mono">
-              Gemini 2.5 Flash
-            </span>
+            <h2 className="text-sm font-semibold leading-tight">Natural Chat</h2>
           </div>
         </div>
       </div>
@@ -528,19 +525,8 @@ function ChatHeader({
           </span>
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold text-foreground leading-tight">
-              {activeChat?.title || "New Chat"}
+              Natural Chat
             </h3>
-            <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
-              <span className="text-emerald-500 font-medium">Gemini 2.5 Flash</span>
-              {activeChat && activeChat.totalTokens > 0 && (
-                <>
-                  <span>·</span>
-                  <span className="font-mono">
-                    {activeChat.totalTokens.toLocaleString()} tokens
-                  </span>
-                </>
-              )}
-            </div>
           </div>
         </div>
       </div>
@@ -768,13 +754,10 @@ function ChatInput({
             {generating ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
-              <Send className="size-4" />
+              <ArrowUp className="size-4" />
             )}
           </Button>
         </div>
-        <p className="text-[10px] text-center text-muted-foreground/50 mt-1.5">
-          Gemini 2.5 Flash can make mistakes. Consider checking important information.
-        </p>
       </div>
     </div>
   );
