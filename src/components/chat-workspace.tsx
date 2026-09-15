@@ -912,6 +912,8 @@ export default function ChatWorkspace({ mode, me: initialMe }: { mode: ChatWorks
         <div className="flex items-center justify-between gap-2 border-b border-sidebar-border p-3">
           <div className="flex items-center gap-1.5">
             <MobileMenuDrawer user={me} onOpenProfile={() => setShowProfile(true)} />
+            {/* Mobile: page title right next to the hamburger (common pattern across pages) */}
+            <h1 className="text-base font-bold tracking-tight md:hidden">{pageTitle}</h1>
             {/* Desktop profile button — hidden on mobile since user profile is already in the drawer */}
             <Button variant="ghost" className="hidden md:flex h-auto gap-2.5 px-2 py-1.5" onClick={() => setShowProfile(true)} aria-label="Open profile">
               <span className="relative">
@@ -950,7 +952,6 @@ export default function ChatWorkspace({ mode, me: initialMe }: { mode: ChatWorks
         </div>
 
         <div className="space-y-2 p-3 pb-1">
-          <h1 className="px-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{pageTitle}</h1>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
