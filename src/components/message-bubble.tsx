@@ -50,7 +50,10 @@ export function MessageBubble({
   if (msg.messageType === "system") {
     return (
       <div className="mx-auto my-1 max-w-[85%]">
-        <Badge variant="secondary" className="whitespace-normal text-center shadow-xs font-normal text-xs">
+        <Badge
+          variant="secondary"
+          className="whitespace-normal text-center shadow-xs font-normal text-xs bg-muted/70 text-muted-foreground border-border/40 hover:bg-muted/70"
+        >
           {msg.content}
         </Badge>
       </div>

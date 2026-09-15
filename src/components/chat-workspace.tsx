@@ -990,8 +990,12 @@ export default function ChatWorkspace({ mode, me: initialMe }: { mode: ChatWorks
                 return (
                   <li key={c.id}>
                     <Button
-                      variant={isActive ? "secondary" : "ghost"}
-                      className="h-auto w-full justify-start gap-3 rounded-xl px-3 py-2.5"
+                      variant="ghost"
+                      className={cn(
+                        "h-auto w-full justify-start gap-3 rounded-xl px-3 py-2.5",
+                        /* theme-safe active tint (secondary is dark in twitter/vercel presets) */
+                        isActive && "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
+                      )}
                       onClick={() => setActiveId(c.id)}
                       aria-label={`Open ${c.displayName}`}
                     >
@@ -1236,7 +1240,7 @@ export default function ChatWorkspace({ mode, me: initialMe }: { mode: ChatWorks
                     </div>
                     <span className="ml-auto text-xs text-muted-foreground sm:ml-0">Recording…</span>
                   </div>
-                  <Button size="icon" className="size-12 shrink-0 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-md" onClick={() => stopRecording(false)} aria-label="Send voice message">
+                  <Button size="icon" className="size-12 shrink-0 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md" onClick={() => stopRecording(false)} aria-label="Send voice message">
                     <Send className="size-5" />
                   </Button>
                 </div>
@@ -1691,9 +1695,9 @@ function WelcomePane({
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <Badge variant="secondary">Files & voice notes</Badge>
-        <Badge variant="secondary">Presence</Badge>
-        <Badge variant="secondary">Realtime sync</Badge>
+        <Badge variant="secondary" className="bg-muted/70 text-muted-foreground border-border/40">Files &amp; voice notes</Badge>
+        <Badge variant="secondary" className="bg-muted/70 text-muted-foreground border-border/40">Presence</Badge>
+        <Badge variant="secondary" className="bg-muted/70 text-muted-foreground border-border/40">Realtime sync</Badge>
       </div>
     </div>
   );
