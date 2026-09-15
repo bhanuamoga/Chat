@@ -35,9 +35,9 @@ export function NavRail({ user, onOpenProfile }: NavRailProps) {
 
   return (
     <>
-      {/* Desktop: vertical rail */}
+      {/* Desktop: vertical rail (a bit wider so labels fit one line) */}
       <nav
-        className="hidden w-20 shrink-0 flex-col items-center border-r border-sidebar-border bg-sidebar py-4 md:flex"
+        className="hidden w-24 shrink-0 flex-col items-center border-r border-sidebar-border bg-sidebar py-4 md:flex"
         aria-label="Main navigation"
       >
         <Link
@@ -59,14 +59,14 @@ export function NavRail({ user, onOpenProfile }: NavRailProps) {
                     href={item.href}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "relative flex w-16 flex-col items-center gap-1 rounded-lg px-2 py-2.5 text-[11px] font-medium transition-colors",
+                      "relative flex w-20 flex-col items-center gap-1 rounded-lg px-1 py-2.5 text-[11px] font-medium transition-colors",
                       active
                         ? "bg-primary/10 text-primary"
                         : "text-sidebar-foreground/70 hover:bg-accent hover:text-accent-foreground"
                     )}
                   >
                     <Icon className="size-5" />
-                    <span>{item.label}</span>
+                    <span className="w-full truncate text-center whitespace-nowrap">{item.label}</span>
                     {"badge" in item && (
                       <span className="absolute top-1.5 right-2 size-2 rounded-full bg-emerald-500 animate-pulse" />
                     )}
@@ -80,6 +80,9 @@ export function NavRail({ user, onOpenProfile }: NavRailProps) {
             );
           })}
         </div>
+
+        {/* Preferences (theme/appearance) — popup, same as the mobile drawer */}
+        <ThemeMenu variant="rail" />
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -188,7 +191,7 @@ export function MobileMenuDrawer({
             </button>
 
             {/* Appearance popup (colors/presets) — opens like the profile popup */}
-            <ThemeMenu row />
+            <ThemeMenu variant="row" />
           </div>
         </div>
 

@@ -30,14 +30,14 @@ export function ModeToggle({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export function ThemeMenu({ row = false }: { row?: boolean }) {
+export function ThemeMenu({ variant = "icon" }: { variant?: "icon" | "row" | "rail" }) {
   const { preset, setPreset } = useThemePreset();
   const { theme, setTheme } = useMode();
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        {row ? (
+        {variant === "row" ? (
           <button
             type="button"
             className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/80 hover:bg-accent hover:text-accent-foreground transition-colors text-left"
@@ -47,13 +47,26 @@ export function ThemeMenu({ row = false }: { row?: boolean }) {
               <span>Appearance</span>
             </div>
           </button>
+        ) : variant === "rail" ? (
+          <button
+            type="button"
+            aria-label="Theme preferences"
+            className="relative flex w-20 flex-col items-center gap-1 rounded-lg px-1 py-2.5 text-[11px] font-medium text-sidebar-foreground/70 hover:bg-accent hover:text-accent-foreground transition-colors"
+          >
+            <Palette className="size-5" />
+            <span className="w-full truncate text-center">Theme</span>
+          </button>
         ) : (
           <Button variant="ghost" size="icon" aria-label="Theme settings">
             <Palette className="size-4" />
           </Button>
         )}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-60">
+      <DropdownMenuContent
+        side={variant === "rail" ? "right" : "bottom"}
+        align={variant === "rail" ? "center" : "end"}
+        className="w-60"
+      >
         <DropdownMenuLabel>Appearance</DropdownMenuLabel>
         <div className="grid grid-cols-3 gap-1 p-1">
           {MODES.map((m) => (
