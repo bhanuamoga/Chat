@@ -3,21 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import {
-  LogOut,
-  MessageSquare,
-  Users,
-  Sparkles,
-  Menu,
-  Moon,
-  Sun,
-  User as UserIcon,
-} from "lucide-react";
+import { LogOut, MessageSquare, Users, Sparkles, Menu, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { useMode } from "@/components/theme-provider";
+import { ThemeMenu } from "@/components/theme-toggle";
 import { UserAvatar } from "@/components/chat-bits";
 import { MorrLogo } from "@/components/morr-logo";
 import { cn } from "@/lib/utils";
@@ -179,23 +171,11 @@ export function MobileMenuDrawer({
 
           <Separator className="my-4" />
 
-          {/* Account / Preferences */}
+          {/* Preferences: theme controls live here (no icons cluttered in the top bar) */}
           <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Account
+            Preferences
           </div>
           <div className="space-y-1">
-            {onOpenProfile && (
-              <SheetClose asChild>
-                <button
-                  onClick={onOpenProfile}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/80 hover:bg-accent hover:text-accent-foreground transition-colors text-left"
-                >
-                  <UserIcon className="size-5 text-muted-foreground" />
-                  <span>Edit Profile</span>
-                </button>
-              </SheetClose>
-            )}
-
             <button
               onClick={() => setTheme(isDark ? "light" : "dark")}
               className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/80 hover:bg-accent hover:text-accent-foreground transition-colors"
@@ -206,6 +186,9 @@ export function MobileMenuDrawer({
               </div>
               <span className="text-xs capitalize text-muted-foreground">{resolvedTheme}</span>
             </button>
+
+            {/* Appearance popup (colors/presets) — opens like the profile popup */}
+            <ThemeMenu row />
           </div>
         </div>
 

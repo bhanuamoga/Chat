@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { UserAvatar } from "@/components/chat-bits";
 import { ConnectionStatus } from "@/components/connection-status";
+import { ModeToggle, ThemeMenu } from "@/components/theme-toggle";
 import { AVATAR_COLORS, AVATAR_EMOJIS, cn } from "@/lib/utils";
 import type { UserRow } from "@/lib/types";
 
@@ -124,6 +125,15 @@ export function ProfileDialog({ open, onOpenChange, me, onSaved }: ProfileDialog
           <DialogTitle>Profile</DialogTitle>
           <DialogDescription>Customise your photo, name and avatar.</DialogDescription>
         </DialogHeader>
+
+        {/* Appearance quick settings (dark/light + color presets) */}
+        <div className="flex w-full items-center justify-between rounded-lg border border-border/60 bg-muted/40 px-3 py-2">
+          <span className="text-sm font-medium text-muted-foreground">Appearance</span>
+          <div className="flex items-center gap-1">
+            <ModeToggle />
+            <ThemeMenu />
+          </div>
+        </div>
 
         <div className="flex flex-col items-center gap-3.5 w-full">
           {/* Avatar with Photo Upload Button */}

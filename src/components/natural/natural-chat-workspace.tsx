@@ -23,7 +23,6 @@ import { UserAvatar } from "@/components/chat-bits";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { VisualDataRenderer } from "./visual-data-renderer";
 import { MobileMenuDrawer } from "@/components/nav-rail";
-import { ModeToggle, ThemeMenu } from "@/components/theme-toggle";
 import { toast } from "sonner";
 import { cn, formatChatListTime } from "@/lib/utils";
 import type {
@@ -408,8 +407,6 @@ function SidebarHeader({ me, onNewChat }: { me: UserRow; onNewChat: () => void }
       </div>
 
       <div className="flex items-center gap-1">
-        <ModeToggle compact />
-        <ThemeMenu />
         <Button
           variant="default"
           size="sm"

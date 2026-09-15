@@ -30,16 +30,28 @@ export function ModeToggle({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export function ThemeMenu() {
+export function ThemeMenu({ row = false }: { row?: boolean }) {
   const { preset, setPreset } = useThemePreset();
   const { theme, setTheme } = useMode();
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Theme settings">
-          <Palette className="size-4" />
-        </Button>
+        {row ? (
+          <button
+            type="button"
+            className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/80 hover:bg-accent hover:text-accent-foreground transition-colors text-left"
+          >
+            <div className="flex items-center gap-3">
+              <Palette className="size-5 text-muted-foreground" />
+              <span>Appearance</span>
+            </div>
+          </button>
+        ) : (
+          <Button variant="ghost" size="icon" aria-label="Theme settings">
+            <Palette className="size-4" />
+          </Button>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
         <DropdownMenuLabel>Appearance</DropdownMenuLabel>

@@ -927,8 +927,6 @@ export default function ChatWorkspace({ mode, me: initialMe }: { mode: ChatWorks
             <div className="mr-1 hidden sm:block">
               <ConnectionBadge supabase={rtStatus.supabase} sse={rtStatus.sse} />
             </div>
-            <ModeToggle compact />
-            <ThemeMenu />
             {mode === "dm" ? (
               <Tooltip>
                 <TooltipTrigger asChild>
