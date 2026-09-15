@@ -600,11 +600,18 @@ export default function ChatWorkspace({ mode, me: initialMe }: { mode: ChatWorks
 
   const toggleReaction = async (messageId: string, emoji: string) => {
     if (!me) return;
-    await fetch(`/api/messages/${messageId}`, {
+    const res = await fetch(`/api/messages/${messageId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reaction: emoji, userId: me.id }),
-    }).catch(() => {});
+    }).catch(() => null);
+    // Apply server result immediately (realtime event will confirm/refresh too)
+    const data = res && res.ok ? await res.json().catch(() => null) : null;
+    if (data?.reactions) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, reactions: data.reactions } : m))
+      );
+    }
   };
 
   const confirmDelete = async () => {

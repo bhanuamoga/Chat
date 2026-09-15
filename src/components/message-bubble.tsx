@@ -203,42 +203,46 @@ export function MessageBubble({
             <span>{formatMessageTime(msg.createdAt)}</span>
             {own && tick && <ReadTicks state={tick} />}
           </div>
-
-          {/* 2. Reaction Badges: clean transparent emojis, NO background panels! */}
-          {Object.keys(grouped).length > 0 && (
-            <div
-              className={cn(
-                "absolute -bottom-2.5 flex items-center gap-1 z-10 select-none",
-                own ? "right-2" : "left-2"
-              )}
-            >
-              <div className="flex items-center gap-1 bg-transparent px-1 py-0">
-                {Object.entries(grouped).map(([emoji, g]) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onReact(emoji);
-                    }}
-                    className={cn(
-                      "inline-flex items-center gap-0.5 text-xs transition-transform active:scale-90 hover:scale-110",
-                      g.mine && "font-bold scale-105"
-                    )}
-                    title={g.mine ? "Click to remove reaction" : "Click to react"}
-                  >
-                    <span className="text-base leading-none drop-shadow-xs">{emoji}</span>
-                    {g.count > 1 && (
-                      <span className="text-[10px] font-semibold text-muted-foreground leading-none">
-                        {g.count}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
+
+        {/*
+          2. Reaction Badges: OUTSIDE the bubble (the bubble has overflow-hidden,
+          which clipped the badge) — anchored to the wrapper so the emoji sits
+          fully visible at the bubble's bottom corner like WhatsApp.
+        */}
+        {Object.keys(grouped).length > 0 && (
+          <div
+            className={cn(
+              "absolute -bottom-2.5 flex items-center gap-1 z-10 select-none",
+              own ? "right-2" : "left-2"
+            )}
+          >
+            <div className="flex items-center gap-1 rounded-full bg-card border border-border/60 shadow-md px-1.5 py-0.5">
+              {Object.entries(grouped).map(([emoji, g]) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReact(emoji);
+                  }}
+                  className={cn(
+                    "inline-flex items-center gap-0.5 text-xs transition-transform active:scale-90 hover:scale-110",
+                    g.mine && "font-bold scale-105"
+                  )}
+                  title={g.mine ? "Click to remove reaction" : "Click to react"}
+                >
+                  <span className="text-base leading-none">{emoji}</span>
+                  {g.count > 1 && (
+                    <span className="text-[10px] font-semibold text-muted-foreground leading-none">
+                      {g.count}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* 
           3. Action Buttons right next to the bubble:

@@ -15,34 +15,39 @@ export async function PATCH(
   const [existing] = await db.select().from(messages).where(eq(messages.id, id)).limit(1);
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  // reaction toggle
+  // reaction toggle — ONE reaction per user per message:
+  // picking the same emoji removes it; picking a different one replaces the old.
   if (body.reaction && body.userId) {
     const emoji = String(body.reaction).slice(0, 8);
     const userId = String(body.userId);
-    const found = await db
+
+    const mine = await db
       .select()
       .from(messageReactions)
       .where(
         and(
           eq(messageReactions.messageId, id),
-          eq(messageReactions.userId, userId),
-          eq(messageReactions.emoji, emoji)
+          eq(messageReactions.userId, userId)
         )
-      )
-      .limit(1);
-    if (found.length) {
+      );
+
+    const hasSame = mine.some((r) => r.emoji === emoji);
+
+    if (mine.length > 0) {
       await db
         .delete(messageReactions)
         .where(
           and(
             eq(messageReactions.messageId, id),
-            eq(messageReactions.userId, userId),
-            eq(messageReactions.emoji, emoji)
+            eq(messageReactions.userId, userId)
           )
         );
-    } else {
+    }
+
+    if (!hasSame) {
       await db.insert(messageReactions).values({ messageId: id, userId, emoji });
     }
+
     const all = await db.select().from(messageReactions).where(eq(messageReactions.messageId, id));
     // enrich with names
     const reactions = await Promise.all(
