@@ -3,24 +3,27 @@
 import * as React from "react";
 import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes";
 
-export type ThemePreset = "default" | "twitter" | "vercel";
+export type ThemePreset = "nature" | "vercel" | "twitter";
 
 const PresetContext = React.createContext<{
   preset: ThemePreset;
   setPreset: (p: ThemePreset) => void;
-}>({ preset: "default", setPreset: () => {} });
+}>({ preset: "nature", setPreset: () => {} });
+
+const VALID_PRESETS: ThemePreset[] = ["nature", "vercel", "twitter"];
 
 export function useThemePreset() {
   return React.useContext(PresetContext);
 }
 
 function PresetSync({ children }: { children: React.ReactNode }) {
-  const [preset, setPresetState] = React.useState<ThemePreset>("default");
+  const [preset, setPresetState] = React.useState<ThemePreset>("nature");
 
   React.useEffect(() => {
     try {
       const saved = localStorage.getItem("pingchat-theme-preset") as ThemePreset | null;
-      if (saved === "twitter" || saved === "vercel" || saved === "default") {
+      // migrate any legacy id (e.g. "default") to one of the 3 supported presets
+      if (saved && VALID_PRESETS.includes(saved)) {
         setPresetState(saved);
       }
     } catch {
