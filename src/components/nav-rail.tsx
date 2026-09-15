@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -11,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { useMode } from "@/components/theme-provider";
 import { ThemeMenu } from "@/components/theme-toggle";
 import { UserAvatar } from "@/components/chat-bits";
+import { ProfileDialog } from "@/components/profile-dialog";
 import { MorrLogo } from "@/components/morr-logo";
 import { cn } from "@/lib/utils";
 import type { UserRow } from "@/lib/types";
@@ -28,6 +30,9 @@ interface NavRailProps {
 
 export function NavRail({ user, onOpenProfile }: NavRailProps) {
   const pathname = usePathname();
+  const [showProfile, setShowProfile] = useState(false);
+  const [meOverride, setMeOverride] = useState(user);
+  const me = meOverride ?? user;
 
   const handleLogout = () => {
     signOut({ callbackUrl: "/" });
@@ -81,6 +86,25 @@ export function NavRail({ user, onOpenProfile }: NavRailProps) {
           })}
         </div>
 
+        {/* Profile — same as mobile drawer: avatar opens the profile popup */}
+        {me && (
+          <button
+            type="button"
+            onClick={() => setShowProfile(true)}
+            aria-label="Edit profile"
+            className="relative flex w-20 flex-col items-center gap-1 rounded-lg px-1 py-2 text-[11px] font-medium text-sidebar-foreground/70 hover:bg-accent hover:text-accent-foreground transition-colors"
+          >
+            <UserAvatar
+              emoji={me.avatarEmoji}
+              color={me.avatarColor}
+              avatarUrl={me.avatarUrl}
+              name={me.displayName}
+              size={30}
+            />
+            <span className="w-full truncate text-center whitespace-nowrap">Profile</span>
+          </button>
+        )}
+
         {/* Preferences (theme/appearance) — popup, same as the mobile drawer */}
         <ThemeMenu variant="rail" />
 
@@ -99,6 +123,15 @@ export function NavRail({ user, onOpenProfile }: NavRailProps) {
           <TooltipContent side="right">Log out</TooltipContent>
         </Tooltip>
       </nav>
+
+      {me && (
+        <ProfileDialog
+          open={showProfile}
+          onOpenChange={setShowProfile}
+          me={me}
+          onSaved={(u) => setMeOverride(u)}
+        />
+      )}
     </>
   );
 }
