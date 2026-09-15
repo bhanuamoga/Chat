@@ -119,6 +119,15 @@ export type VisualData = {
   };
 };
 
+export type DailyUsageInfo = {
+  used: number;
+  limit: number;
+  remaining: number;
+  reached: boolean;
+  /** ISO instant of the next IST midnight, when the quota resets */
+  resetsAt: string;
+};
+
 export type NaturalChatRow = {
   id: string;
   userId: string;

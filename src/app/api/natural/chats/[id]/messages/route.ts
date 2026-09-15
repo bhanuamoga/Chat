@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { naturalChats, naturalMessages } from "@/db/schema";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { auth } from "@/auth";
+import { getDailyUsage } from "@/lib/rate-limit";
 import type { VisualData } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -60,6 +61,19 @@ export async function POST(
 
   if (!chat) {
     return NextResponse.json({ error: "Chat not found" }, { status: 404 });
+  }
+
+  // 0. Daily per-user prompt rate limit (resets at midnight IST)
+  const usageBefore = await getDailyUsage(userId);
+  if (usageBefore.reached) {
+    return NextResponse.json(
+      {
+        error: `Daily limit reached: you can send ${usageBefore.limit} prompts per day. Come back tomorrow — your quota resets at midnight.`,
+        code: "DAILY_LIMIT",
+        usage: usageBefore,
+      },
+      { status: 429 }
+    );
   }
 
   // 1. Insert user message
@@ -196,5 +210,6 @@ export async function POST(
       completionTokens,
       totalTokens,
     },
+    usage: await getDailyUsage(userId),
   });
 }

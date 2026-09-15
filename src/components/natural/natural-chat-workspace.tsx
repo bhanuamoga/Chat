@@ -13,6 +13,7 @@ import {
   BarChart2,
   ArrowLeft,
   Search,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,12 @@ import { MobileMenuDrawer } from "@/components/nav-rail";
 import { ModeToggle, ThemeMenu } from "@/components/theme-toggle";
 import { toast } from "sonner";
 import { cn, formatChatListTime } from "@/lib/utils";
-import type { UserRow, NaturalChatRow, NaturalMessageRow } from "@/lib/types";
+import type {
+  UserRow,
+  NaturalChatRow,
+  NaturalMessageRow,
+  DailyUsageInfo,
+} from "@/lib/types";
 
 interface NaturalChatWorkspaceProps {
   me: UserRow;
@@ -47,6 +53,8 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [search, setSearch] = useState("");
+  /* Daily prompt quota (resets at midnight IST) */
+  const [usage, setUsage] = useState<DailyUsageInfo | null>(null);
   /* Mobile: false = showing chat list (full screen), true = showing conversation */
   const [mobileViewChat, setMobileViewChat] = useState(false);
 
@@ -84,6 +92,20 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
   useEffect(() => {
     fetchChats();
   }, [fetchChats]);
+
+  /* ---- Daily prompt quota (5/day per user, resets midnight IST) ---- */
+  const fetchUsage = useCallback(async () => {
+    try {
+      const res = await fetch("/api/natural/usage");
+      if (res.ok) setUsage(await res.json());
+    } catch {
+      /* silent — quota pill is optional */
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUsage();
+  }, [fetchUsage]);
 
   /* ---- 2. Fetch messages for active chat ---- */
   useEffect(() => {
@@ -155,6 +177,12 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
   const handleSendMessage = async (textToSend?: string) => {
     const content = (textToSend || input).trim();
     if (!content || generating) return;
+    if (usage?.reached) {
+      toast.error(
+        `Daily limit reached — ${usage.limit} prompts per day. Try again tomorrow.`
+      );
+      return;
+    }
 
     let targetChatId = activeChatId;
 
@@ -207,8 +235,16 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
 
       const data = await res.json();
 
+      if (res.status === 429 && data.usage) {
+        setUsage(data.usage);
+      }
+
       if (!res.ok) {
         throw new Error(data.error || "Failed to generate AI response");
+      }
+
+      if (data.usage) {
+        setUsage(data.usage);
       }
 
       setMessages((prev) => [
@@ -292,6 +328,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
             input={input}
             setInput={setInput}
             generating={generating}
+            usage={usage}
             onSend={() => handleSendMessage()}
           />
         </main>
@@ -341,6 +378,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
               input={input}
               setInput={setInput}
               generating={generating}
+              usage={usage}
               onSend={() => handleSendMessage()}
             />
           </div>
@@ -719,18 +757,37 @@ function ChatInput({
   input,
   setInput,
   generating,
+  usage,
   onSend,
 }: {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   input: string;
   setInput: (v: string) => void;
   generating: boolean;
+  usage: DailyUsageInfo | null;
   onSend: () => void;
 }) {
+  const reached = !!usage?.reached;
+
   return (
     <div className="shrink-0 p-3 sm:p-4 bg-background border-t border-border/50">
       <div className="max-w-3xl mx-auto">
-        <div className="flex items-end gap-2 rounded-2xl bg-muted/50 border border-border/80 px-3 py-2 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20 transition-all shadow-sm">
+        {/* Daily limit notice — shown above the input, ChatGPT style */}
+        {reached && usage && (
+          <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] font-medium text-amber-600 dark:text-amber-400">
+            <Clock className="size-3.5 shrink-0" />
+            <span>
+              You've reached today's limit ({usage.used}/{usage.limit} prompts).
+              Try again tomorrow — your quota resets at midnight.
+            </span>
+          </div>
+        )}
+        <div
+          className={cn(
+            "flex items-end gap-2 rounded-2xl bg-muted/50 border border-border/80 px-3 py-2 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20 transition-all shadow-sm",
+            reached && "opacity-60 pointer-events-none"
+          )}
+        >
           <ChatTextarea
             ref={inputRef}
             value={input}
@@ -741,13 +798,18 @@ function ChatInput({
                 onSend();
               }
             }}
-            placeholder="Message Gemini 2.5 Flash…"
+            disabled={reached}
+            placeholder={
+              reached
+                ? "Daily limit reached — come back tomorrow…"
+                : "Message Gemini 2.5 Flash…"
+            }
             className="w-full text-sm placeholder:text-muted-foreground/60"
           />
           <Button
             size="icon"
             onClick={onSend}
-            disabled={!input.trim() || generating}
+            disabled={!input.trim() || generating || reached}
             className="size-9 shrink-0 rounded-xl shadow-sm transition-transform active:scale-95"
             aria-label="Send message"
           >
