@@ -25,6 +25,7 @@ export const users = pgTable(
     avatarEmoji: text("avatar_emoji").notNull().default("😀"),
     bio: text("bio").notNull().default("Hey there! I am using Morr Chat."),
     role: text("role").notNull().default("user"), // 'user' | 'admin' (admins bypass the daily Natural Chat prompt limit; set manually in DB)
+    aiApiConfig: jsonb("ai_api_config"), // BYOK: { entries: [{id,name,provider,apiKey,models[]}], defaultEntryId, rateLimit: {mode:'5'|'10'|'custom'|'unlimited', custom?} }
     lastSeen: timestamp("last_seen", { withTimezone: true }).defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },

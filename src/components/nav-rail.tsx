@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { LogOut, MessageSquare, Users, Sparkles, Menu, Moon, Sun } from "lucide-react";
+import { LogOut, MessageSquare, Users, Sparkles, Menu, Moon, Sun, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose } from "@/components/ui/sheet";
@@ -21,6 +21,7 @@ const NAV_ITEMS = [
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/groups", label: "Group Chat", icon: Users },
   { href: "/natural", label: "Natural Chat", icon: Sparkles, badge: "AI" },
+  { href: "/ai-apis", label: "AI APIs", icon: KeyRound },
 ] as const;
 
 interface NavRailProps {

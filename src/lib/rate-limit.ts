@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { naturalChats, naturalMessages, users } from "@/db/schema";
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { DailyUsageInfo } from "@/lib/types";
+import { parseAiApiConfig } from "@/lib/ai-config";
 
 /** Max Natural Chat prompts a single user may send per day (IST day). */
 export const DAILY_PROMPT_LIMIT = 5;
@@ -28,6 +29,8 @@ export function nextDayStartIST(): Date {
  * every day at midnight IST.
  *
  * Admins (users.role = 'admin', set manually in the DB) bypass the limit.
+ * Every user can also choose their OWN limit on the AI APIs page:
+ * 5 (default) / 10 / custom / unlimited — stored in users.ai_api_config.
  */
 export async function getDailyUsage(userId: string): Promise<DailyUsageInfo> {
   const since = todayStartIST();
@@ -44,17 +47,42 @@ export async function getDailyUsage(userId: string): Promise<DailyUsageInfo> {
           gte(naturalMessages.createdAt, since)
         )
       ),
-    db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1),
+    db
+      .select({ role: users.role, aiApiConfig: users.aiApiConfig })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1),
   ]);
 
   const used = usageRow?.count ?? 0;
   const isAdmin = (userRow?.role || "").trim().toLowerCase() === "admin";
 
+  /* Per-user limit from their AI API config (jsonb) */
+  const cfg = parseAiApiConfig(userRow?.aiApiConfig);
+  const rl = cfg.rateLimit;
+  const unlimited = isAdmin || rl.mode === "unlimited";
+
+  let limit = DAILY_PROMPT_LIMIT;
+  if (rl.mode === "10") limit = 10;
+  else if (rl.mode === "custom" && (rl.custom ?? 0) > 0) limit = Math.floor(rl.custom as number);
+
+  if (unlimited) {
+    return {
+      used,
+      limit,
+      remaining: limit,
+      reached: false,
+      unlimited: true,
+      resetsAt: nextDayStartIST().toISOString(),
+    };
+  }
+
   return {
     used,
-    limit: DAILY_PROMPT_LIMIT,
-    remaining: isAdmin ? DAILY_PROMPT_LIMIT : Math.max(0, DAILY_PROMPT_LIMIT - used),
-    reached: isAdmin ? false : used >= DAILY_PROMPT_LIMIT,
+    limit,
+    remaining: Math.max(0, limit - used),
+    reached: used >= limit,
+    unlimited: false,
     resetsAt: nextDayStartIST().toISOString(),
   };
 }

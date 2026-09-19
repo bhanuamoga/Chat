@@ -124,8 +124,30 @@ export type DailyUsageInfo = {
   limit: number;
   remaining: number;
   reached: boolean;
+  /** true for admins or users who picked "Unlimited" on the AI APIs page */
+  unlimited?: boolean;
   /** ISO instant of the next IST midnight, when the quota resets */
   resetsAt: string;
+};
+
+/* ------- Bring-Your-Own-Key AI APIs (client-safe, keys stay masked) ------- */
+
+export type AiApiProviderId = "gemini" | "openai" | "openrouter";
+
+export type AiApiEntryClient = {
+  id: string;
+  name: string;
+  provider: AiApiProviderId;
+  maskedKey: string;
+  models: string[];
+};
+
+export type AiApisClientConfig = {
+  entries: AiApiEntryClient[];
+  defaultEntryId: string | null;
+  rateLimit: { mode: "5" | "10" | "custom" | "unlimited"; custom: number | null };
+  /** Live catalog of the built-in server Gemini key (fetched from Google) */
+  defaultModels: string[];
 };
 
 export type NaturalChatRow = {

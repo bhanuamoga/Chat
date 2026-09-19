@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { streamText } from "ai";
-import { getGeminiModel, NATURAL_CHAT_SYSTEM_PROMPT } from "@/lib/gemini";
+import { NATURAL_CHAT_SYSTEM_PROMPT } from "@/lib/gemini";
+import { resolveChatModel } from "@/lib/ai-config";
 import { db } from "@/db";
-import { naturalChats, naturalMessages } from "@/db/schema";
+import { naturalChats, naturalMessages, users } from "@/db/schema";
 import { and, asc, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { getDailyUsage } from "@/lib/rate-limit";
+import { parseAiApiConfig } from "@/lib/ai-config";
 import type { VisualData } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +57,10 @@ export async function POST(
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
   const userContent = String(body.content || "").trim();
+  /* BYOK selection from the composer dropdown (either may be omitted → fallback to user default / built-in) */
+  const apiEntryId =
+    typeof body.apiEntryId === "string" && body.apiEntryId ? body.apiEntryId : null;
+  const wantModel = typeof body.model === "string" && body.model ? body.model : null;
 
   if (!userContent) {
     return NextResponse.json({ error: "Content is required" }, { status: 400 });
@@ -84,18 +90,46 @@ export async function POST(
     );
   }
 
-  // 1. Insert user message first (it exists even if generation fails mid-way)
+  // 1. Resolve which provider/model/key streams this reply:
+  //    the user's own API entry (BYOK) or the built-in default Gemini key.
+  const [meRow] = await db
+    .select({ aiApiConfig: users.aiApiConfig })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  let resolved;
+  try {
+    resolved = await resolveChatModel(
+      parseAiApiConfig(meRow?.aiApiConfig),
+      apiEntryId,
+      wantModel
+    );
+  } catch (keyErr: any) {
+    return NextResponse.json(
+      {
+        error:
+          keyErr?.message ||
+          "AI API key is not configured. Add one on the AI APIs page or contact the admin.",
+      },
+      { status: 500 }
+    );
+  }
+  const { model: modelInstance, modelId, provider, sourceName } = resolved;
+  const modelLabel = `${sourceName} · ${modelId}`;
+
+  // 2. Insert user message first (it exists even if generation fails mid-way)
   const [userMsg] = await db
     .insert(naturalMessages)
     .values({
       chatId: id,
       role: "user",
       content: userContent,
-      modelUsed: chat.model || "gemini-2.5-flash",
+      modelUsed: modelLabel.slice(0, 160),
     })
     .returning();
 
-  // 2. Load conversation history for context
+  // 3. Load conversation history for context
   const previousMsgs = await db
     .select()
     .from(naturalMessages)
@@ -108,33 +142,23 @@ export async function POST(
     content: m.content,
   }));
 
-  // 3. Start Gemini 2.5 Flash streaming (AI SDK 7) with live "thoughts"
-  let modelInstance;
-  try {
-    modelInstance = getGeminiModel();
-  } catch (keyErr: any) {
-    return NextResponse.json(
-      {
-        error:
-          keyErr?.message ||
-          "GEMINI_API_KEY is not configured. Please add GEMINI_API_KEY to your environment variables.",
-      },
-      { status: 500 }
-    );
-  }
 
   const result = streamText({
     model: modelInstance,
     system: chat.systemPrompt || NATURAL_CHAT_SYSTEM_PROMPT,
     messages: history,
-    providerOptions: {
-      google: {
-        thinkingConfig: {
-          // include the model's live reasoning so the UI can show "what it's doing"
-          includeThoughts: true,
-        },
-      },
-    },
+    ...(provider === "gemini"
+      ? {
+          providerOptions: {
+            google: {
+              thinkingConfig: {
+                // include the model's live reasoning so the UI can show "what it's doing"
+                includeThoughts: true,
+              },
+            },
+          },
+        }
+      : {}),
   });
 
   const encoder = new TextEncoder();
@@ -199,7 +223,7 @@ export async function POST(
             promptTokens,
             completionTokens,
             totalTokens,
-            modelUsed: "gemini-2.5-flash",
+            modelUsed: modelLabel.slice(0, 160),
           })
           .returning();
 

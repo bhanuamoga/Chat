@@ -4,18 +4,23 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 export interface ChatTextareaProps
-  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
+  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  /** Smallest height in px when empty (default 26 — one line) */
+  minHeight?: number;
+  /** Tallest it may auto-grow to before scrolling (default 130) */
+  maxHeight?: number;
+}
 
 const ChatTextarea = React.forwardRef<HTMLTextAreaElement, ChatTextareaProps>(
-  ({ className, onChange, value, ...props }, ref) => {
+  ({ className, onChange, value, minHeight = 26, maxHeight = 130, ...props }, ref) => {
     const innerRef = React.useRef<HTMLTextAreaElement | null>(null);
 
     const adjustHeight = () => {
       const textarea = innerRef.current;
       if (!textarea) return;
       textarea.style.height = "auto";
-      const newHeight = Math.min(textarea.scrollHeight, 130);
-      textarea.style.height = `${Math.max(newHeight, 26)}px`;
+      const newHeight = Math.min(textarea.scrollHeight, maxHeight);
+      textarea.style.height = `${Math.max(newHeight, minHeight)}px`;
     };
 
     React.useEffect(() => {
@@ -43,7 +48,7 @@ const ChatTextarea = React.forwardRef<HTMLTextAreaElement, ChatTextareaProps>(
           "nice-scroll",
           className
         )}
-        style={{ maxHeight: "130px", minHeight: "26px" }}
+        style={{ maxHeight: `${maxHeight}px`, minHeight: `${minHeight}px` }}
         {...props}
       />
     );

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import Link from "next/link";
 import {
   ArrowUp,
   Loader2,
@@ -14,11 +15,21 @@ import {
   Search,
   Clock,
   ChevronDown,
+  Check,
+  KeyRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatTextarea } from "@/components/ui/chat-textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { UserAvatar } from "@/components/chat-bits";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { VisualDataRenderer } from "./visual-data-renderer";
@@ -30,6 +41,7 @@ import type {
   NaturalChatRow,
   NaturalMessageRow,
   DailyUsageInfo,
+  AiApisClientConfig,
 } from "@/lib/types";
 
 interface NaturalChatWorkspaceProps {
@@ -69,6 +81,10 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
   const flushRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /* Mobile: false = showing chat list (full screen), true = showing conversation */
   const [mobileViewChat, setMobileViewChat] = useState(false);
+
+  /* BYOK: connected AI APIs + which entry/model the composer dropdown selected */
+  const [apiConfig, setApiConfig] = useState<AiApisClientConfig | null>(null);
+  const [selection, setSelection] = useState<{ entryId: string | null; model: string } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -118,6 +134,58 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
   useEffect(() => {
     fetchUsage();
   }, [fetchUsage]);
+
+  /* ---- Connected AI APIs (BYOK) — load once, restore last selection ---- */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/natural/apis");
+        if (!res.ok) return;
+        const cfg: AiApisClientConfig = await res.json();
+        if (cancelled) return;
+        setApiConfig(cfg);
+
+        const valid = (sel: { entryId: string | null; model: string }) => {
+          if (!sel?.model) return false;
+          if (sel.entryId === null) return cfg.defaultModels.includes(sel.model);
+          const e = cfg.entries.find((x) => x.id === sel.entryId);
+          return !!e && e.models.includes(sel.model);
+        };
+
+        let sel: { entryId: string | null; model: string } | null = null;
+        try {
+          const raw = localStorage.getItem("morr_natural_sel");
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (valid(parsed)) sel = parsed;
+          }
+        } catch { /* ignore */ }
+
+        if (!sel) {
+          const d = cfg.defaultEntryId ? cfg.entries.find((x) => x.id === cfg.defaultEntryId) : null;
+          sel = d && d.models.length
+            ? { entryId: d.id, model: d.models[0] }
+            : { entryId: null, model: cfg.defaultModels[0] || "gemini-2.5-flash" };
+        }
+        setSelection(sel);
+      } catch { /* composer dropdown stays on built-in default */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (selection) {
+      try { localStorage.setItem("morr_natural_sel", JSON.stringify(selection)); } catch { /* ignore */ }
+    }
+  }, [selection]);
+
+  /* Label shown in the composer dropdown + message headers */
+  const currentApiLabel = useMemo(() => {
+    if (!selection) return "Gemini 2.5 Flash";
+    const e = selection.entryId ? apiConfig?.entries.find((x) => x.id === selection.entryId) : null;
+    return e ? `${e.name} · ${selection.model}` : selection.model;
+  }, [selection, apiConfig]);
 
   /* ---- 2. Fetch messages for active chat ---- */
   useEffect(() => {
@@ -229,7 +297,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
       promptTokens: 0,
       completionTokens: 0,
       totalTokens: 0,
-      modelUsed: "gemini-2.5-flash",
+      modelUsed: currentApiLabel,
       createdAt: new Date().toISOString(),
     };
 
@@ -242,7 +310,11 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
       const res = await fetch(`/api/natural/chats/${targetChatId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({
+          content,
+          apiEntryId: selection?.entryId ?? null,
+          model: selection?.model ?? null,
+        }),
       });
 
       /* Non-streaming errors (auth / 429 / 404 …) come back as JSON */
@@ -402,6 +474,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
             streaming={streaming}
             me={me}
             onSendMessage={handleSendMessage}
+            modelLabel={currentApiLabel}
           />
           <ChatInput
             inputRef={inputRef}
@@ -409,6 +482,10 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
             setInput={setInput}
             generating={generating}
             usage={usage}
+            apiConfig={apiConfig}
+            selection={selection}
+            onSelectModel={setSelection}
+            modelLabel={currentApiLabel}
             onSend={() => handleSendMessage()}
           />
         </main>
@@ -453,6 +530,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
               streaming={streaming}
               me={me}
               onSendMessage={handleSendMessage}
+              modelLabel={currentApiLabel}
             />
             <ChatInput
               inputRef={inputRef}
@@ -460,6 +538,10 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
               setInput={setInput}
               generating={generating}
               usage={usage}
+              apiConfig={apiConfig}
+              selection={selection}
+              onSelectModel={setSelection}
+              modelLabel={currentApiLabel}
               onSend={() => handleSendMessage()}
             />
           </div>
@@ -663,6 +745,11 @@ function ChatHeader({
   );
 }
 
+function prettyModelLabel(raw: string | null | undefined): string {
+  if (!raw) return "AI Assistant";
+  return String(raw).replace(/^models\//, "");
+}
+
 function ChatViewport({
   scrollRef,
   messages,
@@ -671,6 +758,7 @@ function ChatViewport({
   streaming,
   me,
   onSendMessage,
+  modelLabel,
 }: {
   scrollRef: React.RefObject<HTMLDivElement | null>;
   messages: NaturalMessageRow[];
@@ -679,6 +767,7 @@ function ChatViewport({
   streaming: { reasoning: string; text: string; thoughtSecs: number } | null;
   me: UserRow;
   onSendMessage: (text: string) => void;
+  modelLabel: string;
 }) {
   return (
     <div ref={scrollRef} className="nice-scroll flex-1 overflow-y-auto">
@@ -699,7 +788,7 @@ function ChatViewport({
               How can I help you today?
             </h2>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-md mx-auto">
-              Powered by <span className="text-foreground font-semibold">Gemini 2.5 Flash</span> — get answers with charts, tables, KPIs & analytics.
+              Powered by <span className="text-foreground font-semibold">{modelLabel}</span> — get answers with charts, tables, KPIs & analytics.
             </p>
           </div>
 
@@ -755,9 +844,9 @@ function ChatViewport({
                     <div className="min-w-0 flex-1 overflow-hidden">
                       {/* Sender label */}
                       <div className="flex items-center gap-1.5 mb-1">
-                        <span className="text-xs font-semibold text-foreground">
-                          {isUser ? me.displayName : "Gemini 2.5 Flash"}
-                        </span>
+                    <span className="text-xs font-semibold text-foreground">
+                      {isUser ? me.displayName : prettyModelLabel(m.modelUsed)}
+                    </span>
                         {!isUser && (
                           <span className="text-[10px] text-emerald-500 font-medium">AI</span>
                         )}
@@ -870,6 +959,10 @@ function ChatInput({
   setInput,
   generating,
   usage,
+  apiConfig,
+  selection,
+  onSelectModel,
+  modelLabel,
   onSend,
 }: {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -877,6 +970,10 @@ function ChatInput({
   setInput: (v: string) => void;
   generating: boolean;
   usage: DailyUsageInfo | null;
+  apiConfig: AiApisClientConfig | null;
+  selection: { entryId: string | null; model: string } | null;
+  onSelectModel: (sel: { entryId: string | null; model: string }) => void;
+  modelLabel: string;
   onSend: () => void;
 }) {
   const reached = !!usage?.reached;
@@ -894,14 +991,18 @@ function ChatInput({
             </span>
           </div>
         )}
+
+        {/* Composer card: textarea grows with content; toolbar row sits below it */}
         <div
           className={cn(
-            "flex items-end gap-2 rounded-2xl bg-muted/50 border border-border/80 px-3 py-2 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20 transition-all shadow-sm",
+            "flex flex-col rounded-2xl bg-muted/50 border border-border/80 px-3 pt-2.5 pb-1.5 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20 transition-all shadow-sm",
             reached && "opacity-60 pointer-events-none"
           )}
         >
           <ChatTextarea
             ref={inputRef}
+            minHeight={52}
+            maxHeight={200}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -914,25 +1015,131 @@ function ChatInput({
             placeholder={
               reached
                 ? "Daily limit reached — come back tomorrow…"
-                : "Message Gemini 2.5 Flash…"
+                : `Message ${modelLabel}…`
             }
             className="w-full text-sm placeholder:text-muted-foreground/60"
           />
-          <Button
-            size="icon"
-            onClick={onSend}
-            disabled={!input.trim() || generating || reached}
-            className="size-9 shrink-0 rounded-xl shadow-sm transition-transform active:scale-95"
-            aria-label="Send message"
-          >
-            {generating ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <ArrowUp className="size-4" />
-            )}
-          </Button>
+
+          {/* Bottom toolbar: left = API/model picker, right = send */}
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <ApiModelMenu
+              apiConfig={apiConfig}
+              selection={selection}
+              disabled={generating}
+              onSelect={onSelectModel}
+            />
+            <Button
+              size="icon"
+              onClick={onSend}
+              disabled={!input.trim() || generating || reached}
+              className="size-9 shrink-0 rounded-xl shadow-sm transition-transform active:scale-95"
+              aria-label="Send message"
+            >
+              {generating ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ArrowUp className="size-4" />
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+const PROVIDER_SHORT_LABELS: Record<string, string> = {
+  gemini: "Gemini",
+  openai: "OpenAI",
+  openrouter: "OpenRouter",
+};
+
+/** Bottom-left composer dropdown — picks which API key + which model answers (fully data-driven). */
+function ApiModelMenu({
+  apiConfig,
+  selection,
+  disabled,
+  onSelect,
+}: {
+  apiConfig: AiApisClientConfig | null;
+  selection: { entryId: string | null; model: string } | null;
+  disabled: boolean;
+  onSelect: (sel: { entryId: string | null; model: string }) => void;
+}) {
+  const isSelected = (entryId: string | null, model: string) =>
+    selection?.entryId === entryId && selection?.model === model;
+
+  const defaultModels =
+    apiConfig?.defaultModels && apiConfig.defaultModels.length > 0
+      ? apiConfig.defaultModels
+      : ["gemini-2.5-flash"];
+
+  const triggerLabel = selection?.model || "Select model";
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild disabled={disabled}>
+        <button
+          type="button"
+          className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          aria-label="Choose AI API and model"
+        >
+          <Sparkles className="size-3.5 shrink-0 text-primary" />
+          <span className="max-w-[200px] sm:max-w-[260px] truncate">{triggerLabel}</span>
+          <ChevronDown className="size-3.5 shrink-0" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        sideOffset={8}
+        className="nice-scroll max-h-[320px] w-[290px] overflow-y-auto"
+      >
+        {/* Built-in server key */}
+        <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          Morr Default
+        </DropdownMenuLabel>
+        {defaultModels.map((m) => (
+          <DropdownMenuItem
+            key={`builtin:${m}`}
+            onClick={() => onSelect({ entryId: null, model: m })}
+            className="flex items-center justify-between gap-2 text-xs"
+          >
+            <span className="truncate">{prettyModelLabel(m)}</span>
+            {isSelected(null, m) && <Check className="size-3.5 shrink-0 text-primary" />}
+          </DropdownMenuItem>
+        ))}
+
+        {/* User's own connected APIs (keys live in their AI API config) */}
+        {(apiConfig?.entries || []).map((e) => (
+          <div key={e.id}>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+              <span className="truncate">{e.name}</span>
+              <span className="normal-case font-normal">
+                · {PROVIDER_SHORT_LABELS[e.provider] || e.provider}
+              </span>
+            </DropdownMenuLabel>
+            {e.models.map((m) => (
+              <DropdownMenuItem
+                key={`${e.id}:${m}`}
+                onClick={() => onSelect({ entryId: e.id, model: m })}
+                className="flex items-center justify-between gap-2 text-xs"
+              >
+                <span className="truncate">{prettyModelLabel(m)}</span>
+                {isSelected(e.id, m) && <Check className="size-3.5 shrink-0 text-primary" />}
+              </DropdownMenuItem>
+            ))}
+          </div>
+        ))}
+
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/ai-apis" className="flex cursor-pointer items-center gap-2 text-xs font-medium">
+            <KeyRound className="size-3.5 text-primary" />
+            {apiConfig?.entries?.length ? "Manage your AI APIs…" : "Add your own API key…"}
+          </Link>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
