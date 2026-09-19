@@ -35,9 +35,59 @@ import {
   Radar as RadarIcon,
   ChartScatter,
   Table as TableIcon,
+  ExternalLink,
+  Globe,
 } from "lucide-react";
-import type { VisualChart, VisualData } from "@/lib/types";
+import type { SourceRef, VisualChart, VisualData } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
+
+/** Clickable source/citation cards (news, socials, references) — opens in a new tab. */
+export function SourceCards({ sources }: { sources: SourceRef[] }) {
+  if (!Array.isArray(sources) || sources.length === 0) return null;
+  return (
+    <div className="w-full">
+      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <Globe className="size-3.5" />
+        Sources
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {sources.slice(0, 12).map((s, i) => {
+          const domain =
+            s.domain ||
+            (() => {
+              try {
+                return new URL(s.url).hostname.replace(/^www\./, "");
+              } catch {
+                return s.url;
+              }
+            })();
+          return (
+            <a
+              key={`${s.url}-${i}`}
+              href={s.url}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              className="group flex items-center gap-2.5 rounded-xl border border-border/70 bg-card/70 px-3 py-2 transition-all hover:border-primary/40 hover:bg-primary/5 shadow-2xs"
+            >
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-[10px] font-bold uppercase text-primary">
+                {domain.slice(0, 2) || "↗"}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12px] font-medium text-foreground group-hover:text-primary transition-colors">
+                  {s.title || domain}
+                </span>
+                <span className="block truncate text-[10px] text-muted-foreground">
+                  {domain}
+                </span>
+              </span>
+              <ExternalLink className="size-3.5 shrink-0 text-muted-foreground group-hover:text-primary transition-colors" />
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 interface VisualDataRendererProps {
   data: VisualData | null | undefined;
@@ -243,8 +293,9 @@ export function VisualDataRenderer({ data }: VisualDataRendererProps) {
   const hasMetrics = Array.isArray(data.metrics) && data.metrics.length > 0;
   const hasChart = data.chart && Array.isArray(data.chart.data) && data.chart.data.length > 0;
   const hasTable = data.table && Array.isArray(data.table.rows) && data.table.rows.length > 0;
+  const hasSources = Array.isArray(data.sources) && data.sources.length > 0;
 
-  if (!hasMetrics && !hasChart && !hasTable && !data.summary && !data.callout) {
+  if (!hasMetrics && !hasChart && !hasTable && !hasSources && !data.summary && !data.callout) {
     return null;
   }
 
@@ -365,6 +416,9 @@ export function VisualDataRenderer({ data }: VisualDataRendererProps) {
           <p className="leading-relaxed">{data.callout.text}</p>
         </div>
       )}
+
+      {/* 6. Clickable source/citation cards */}
+      {hasSources && <SourceCards sources={data.sources!} />}
     </div>
   );
 }

@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { UserAvatar } from "@/components/chat-bits";
 import { MarkdownRenderer } from "./markdown-renderer";
-import { VisualDataRenderer } from "./visual-data-renderer";
+import { VisualDataRenderer, SourceCards } from "./visual-data-renderer";
 import { MobileMenuDrawer } from "@/components/nav-rail";
 import { toast } from "sonner";
 import { cn, formatChatListTime } from "@/lib/utils";
@@ -43,6 +43,7 @@ import type {
   NaturalMessageRow,
   DailyUsageInfo,
   AiApisClientConfig,
+  SourceRef,
 } from "@/lib/types";
 
 interface NaturalChatWorkspaceProps {
@@ -76,8 +77,8 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
   /* Daily prompt quota (resets at midnight IST) */
   const [usage, setUsage] = useState<DailyUsageInfo | null>(null);
   /* Live AI streaming (reasoning thought-process + answer typing out) */
-  const [streaming, setStreaming] = useState<{ reasoning: string; text: string; thoughtSecs: number } | null>(null);
-  const streamRef = useRef({ reasoning: "", text: "", thoughtSecs: 0 });
+  const [streaming, setStreaming] = useState<{ reasoning: string; text: string; thoughtSecs: number; sources: SourceRef[] } | null>(null);
+  const streamRef = useRef<{ reasoning: string; text: string; thoughtSecs: number; sources: SourceRef[] }>({ reasoning: "", text: "", thoughtSecs: 0, sources: [] });
   const streamStartRef = useRef(0);
   const flushRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /* Mobile: false = showing chat list (full screen), true = showing conversation */
@@ -332,9 +333,9 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
       if (!res.body) throw new Error("No response stream from server");
 
       /* -------- Live streaming (AI SDK fullStream -> NDJSON lines) -------- */
-      streamRef.current = { reasoning: "", text: "", thoughtSecs: 0 };
+      streamRef.current = { reasoning: "", text: "", thoughtSecs: 0, sources: [] };
       streamStartRef.current = Date.now();
-      setStreaming({ reasoning: "", text: "", thoughtSecs: 0 });
+      setStreaming({ reasoning: "", text: "", thoughtSecs: 0, sources: [] });
       /* Smooth typewriter reveal (~17fps): even a big blob reveals progressively */
       flushRef.current = setInterval(() => {
         const target = streamRef.current;
@@ -348,6 +349,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
             reasoning: reveal(prev?.reasoning ?? "", target.reasoning),
             text: reveal(prev?.text ?? "", target.text),
             thoughtSecs: target.thoughtSecs,
+            sources: target.sources,
           };
         });
         scrollToBottom();
@@ -380,6 +382,11 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
               }
               streamRef.current.text += ev.d;
             } else if (ev.t === "reasoning") streamRef.current.reasoning += ev.d;
+            else if (ev.t === "source") {
+              if (!streamRef.current.sources.some((s) => s.url === ev.url)) {
+                streamRef.current.sources.push({ url: ev.url, title: ev.title, domain: ev.domain });
+              }
+            }
             else if (ev.t === "done") donePayload = ev;
             else if (ev.t === "error") streamError = ev.d || "Generation failed";
           } catch {
@@ -774,7 +781,7 @@ function ChatViewport({
   messages: NaturalMessageRow[];
   loadingMessages: boolean;
   generating: boolean;
-  streaming: { reasoning: string; text: string; thoughtSecs: number } | null;
+  streaming: { reasoning: string; text: string; thoughtSecs: number; sources: SourceRef[] } | null;
   me: UserRow;
   onSendMessage: (text: string) => void;
   modelLabel: string;
@@ -951,6 +958,11 @@ function ChatViewport({
                       className="ml-0.5 inline-block h-4 w-[3px] animate-pulse rounded-full bg-primary align-[-3px]"
                       aria-hidden
                     />
+                    {streaming.sources.length > 0 && (
+                      <div className="mt-3 animate-in fade-in duration-300">
+                        <SourceCards sources={streaming.sources} />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

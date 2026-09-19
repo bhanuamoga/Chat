@@ -108,11 +108,19 @@ export type VisualTable = {
   rows: (string | number)[][];
 };
 
+/** A clickable citation card (from live web-search grounding) */
+export type SourceRef = {
+  title?: string;
+  url: string;
+  domain?: string;
+};
+
 export type VisualData = {
   summary?: string;
   metrics?: VisualMetric[];
   chart?: VisualChart;
   table?: VisualTable;
+  sources?: SourceRef[];
   callout?: {
     type: "info" | "success" | "warning" | "tip";
     text: string;
@@ -124,7 +132,7 @@ export type DailyUsageInfo = {
   limit: number;
   remaining: number;
   reached: boolean;
-  /** true for admins or users who picked "Unlimited" on the AI APIs page */
+  /** true when the user picked "Unlimited" on the AI APIs page */
   unlimited?: boolean;
   /** ISO instant of the next IST midnight, when the quota resets */
   resetsAt: string;

@@ -181,6 +181,8 @@ export type ResolvedChatModel = {
   provider: AiApiProvider;
   /** Human label shown in the UI — the user's entry name */
   sourceName: string;
+  /** The provider factory (for Gemini: enables the google_search grounding tool) */
+  providerClient: any | null;
 };
 
 /** Thrown when the user has no usable BYOK entry — chat must prompt them to add one. */
@@ -215,14 +217,22 @@ export async function resolveChatModel(
       : entry.models[0] || wantModel || defaultModelHint(entry.provider);
 
   let model: any;
+  let providerClient: any = null;
   if (entry.provider === "gemini") {
-    model = createGoogleGenerativeAI({ apiKey: entry.apiKey })(modelId);
+    providerClient = createGoogleGenerativeAI({ apiKey: entry.apiKey });
+    model = providerClient(modelId);
   } else if (entry.provider === "openai") {
     model = createOpenAI({ apiKey: entry.apiKey })(modelId);
   } else {
     model = createOpenRouter({ apiKey: entry.apiKey })(modelId);
   }
-  return { model, modelId, provider: entry.provider, sourceName: entry.name };
+  return {
+    model,
+    modelId,
+    provider: entry.provider,
+    sourceName: entry.name,
+    providerClient,
+  };
 }
 
 /** Last-resort id if a saved entry somehow has no models — real catalogs always win. */

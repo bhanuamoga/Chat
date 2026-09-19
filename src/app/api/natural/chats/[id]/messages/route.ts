@@ -8,7 +8,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { getDailyUsage } from "@/lib/rate-limit";
 import { parseAiApiConfig } from "@/lib/ai-config";
-import type { VisualData } from "@/lib/types";
+import type { SourceRef, VisualData } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -126,7 +126,7 @@ export async function POST(
       { status: 400 }
     );
   }
-  const { model: modelInstance, modelId, provider, sourceName } = resolved;
+  const { model: modelInstance, modelId, provider, sourceName, providerClient } = resolved;
   const modelLabel = `${sourceName} · ${modelId}`;
 
   // 2. Insert user message first (it exists even if generation fails mid-way)
@@ -160,6 +160,9 @@ export async function POST(
     messages: history,
     ...(provider === "gemini"
       ? {
+          /* Google Search grounding: the model fetches REAL-TIME web/social data
+             when the question needs it; sources stream back as citation cards */
+          tools: { google_search: providerClient.tools.googleSearch({}) },
           providerOptions: {
             google: {
               thinkingConfig: {
@@ -174,6 +177,7 @@ export async function POST(
 
   const encoder = new TextEncoder();
   let fullText = "";
+  const sources: SourceRef[] = [];
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -182,7 +186,15 @@ export async function POST(
 
       try {
         for await (const part of result.fullStream as AsyncIterable<any>) {
-          const p = part as { type: string; text?: string; delta?: string; textDelta?: string };
+          const p = part as {
+            type: string;
+            text?: string;
+            delta?: string;
+            textDelta?: string;
+            sourceType?: string;
+            url?: string;
+            title?: string;
+          };
           // AI SDK 7 fullStream parts: { type: 'text-delta', text } / { type: 'reasoning-delta', text }
           if (p.type === "text-delta" || p.type === "text") {
             const delta = p.text ?? p.delta ?? p.textDelta ?? "";
@@ -194,6 +206,21 @@ export async function POST(
             const delta = p.text ?? p.delta ?? p.textDelta ?? "";
             if (delta) {
               send({ t: "reasoning", d: delta });
+            }
+          } else if (p.type === "source" && p.sourceType === "url" && p.url) {
+            /* Web-search citation — render as a clickable card client-side */
+            let domain = "";
+            try {
+              domain = new URL(p.url).hostname.replace(/^www\./, "");
+            } catch { /* ignore */ }
+            if (!sources.some((x) => x.url === p.url)) {
+              const card: SourceRef = {
+                url: p.url,
+                title: p.title || domain || p.url,
+                domain,
+              };
+              sources.push(card);
+              send({ t: "source", ...card });
             }
           } else if (p.type === "error") {
             throw (part as { error?: unknown }).error;
@@ -213,6 +240,13 @@ export async function POST(
         const rawAnswer = fullText;
         const { text: cleanContent, visualData } = extractVisualData(rawAnswer);
 
+        /* Attach web-search citation cards to the stored analytics payload */
+        const mergedVisual: VisualData | null = visualData
+          ? { ...visualData, ...(sources.length ? { sources } : {}) }
+          : sources.length
+          ? { sources }
+          : null;
+
         const usageAny = ((await result.usage) || {}) as any;
         const promptTokens =
           usageAny.promptTokens ??
@@ -230,7 +264,7 @@ export async function POST(
             chatId: id,
             role: "assistant",
             content: cleanContent,
-            visualData,
+            visualData: mergedVisual,
             promptTokens,
             completionTokens,
             totalTokens,

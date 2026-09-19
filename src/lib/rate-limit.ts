@@ -28,9 +28,9 @@ export function nextDayStartIST(): Date {
  * usage is derived from the message history itself, so it resets automatically
  * every day at midnight IST.
  *
- * Admins (users.role = 'admin', set manually in the DB) bypass the limit.
- * Every user can also choose their OWN limit on the AI APIs page:
- * 5 (default) / 10 / custom / unlimited — stored in users.ai_api_config.
+ * Every user chooses their OWN limit on the AI APIs page:
+ * 5 (default) / 10 / custom / unlimited — stored in users.ai_api_config and
+ * applied STRICTLY (no silent overrides of any kind).
  */
 export async function getDailyUsage(userId: string): Promise<DailyUsageInfo> {
   const since = todayStartIST();
@@ -48,19 +48,18 @@ export async function getDailyUsage(userId: string): Promise<DailyUsageInfo> {
         )
       ),
     db
-      .select({ role: users.role, aiApiConfig: users.aiApiConfig })
+      .select({ aiApiConfig: users.aiApiConfig })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1),
   ]);
 
   const used = usageRow?.count ?? 0;
-  const isAdmin = (userRow?.role || "").trim().toLowerCase() === "admin";
 
-  /* Per-user limit from their AI API config (jsonb) */
+  /* Per-user limit from their AI API config (jsonb) — applied strictly */
   const cfg = parseAiApiConfig(userRow?.aiApiConfig);
   const rl = cfg.rateLimit;
-  const unlimited = isAdmin || rl.mode === "unlimited";
+  const unlimited = rl.mode === "unlimited";
 
   let limit = DAILY_PROMPT_LIMIT;
   if (rl.mode === "10") limit = 10;
