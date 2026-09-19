@@ -43,6 +43,14 @@ const QUICK_PROMPTS = [
   "Create a marketing plan for a SaaS product launch",
 ];
 
+/** Strip ```visual-json blocks from assistant text (including the in-progress tail while streaming). */
+function stripVisualJson(text: string): string {
+  return text
+    .replace(/```visual-json[\s\S]*?```/g, "")
+    .replace(/```visual-json[\s\S]*$/g, "")
+    .trim();
+}
+
 export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
   const [chats, setChats] = useState<NaturalChatRow[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -54,6 +62,10 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
   const [search, setSearch] = useState("");
   /* Daily prompt quota (resets at midnight IST) */
   const [usage, setUsage] = useState<DailyUsageInfo | null>(null);
+  /* Live AI streaming (reasoning thought-process + answer typing out) */
+  const [streaming, setStreaming] = useState<{ reasoning: string; text: string } | null>(null);
+  const streamRef = useRef({ reasoning: "", text: "" });
+  const flushRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /* Mobile: false = showing chat list (full screen), true = showing conversation */
   const [mobileViewChat, setMobileViewChat] = useState(false);
 
@@ -232,34 +244,80 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
         body: JSON.stringify({ content }),
       });
 
-      const data = await res.json();
-
-      if (res.status === 429 && data.usage) {
-        setUsage(data.usage);
-      }
-
+      /* Non-streaming errors (auth / 429 / 404 …) come back as JSON */
       if (!res.ok) {
-        throw new Error(data.error || "Failed to generate AI response");
+        const data = await res.json().catch(() => ({}) as any);
+        if (res.status === 429 && (data as any).usage) setUsage((data as any).usage);
+        throw new Error((data as any).error || "Failed to generate AI response");
+      }
+      if (!res.body) throw new Error("No response stream from server");
+
+      /* -------- Live streaming (AI SDK fullStream -> NDJSON lines) -------- */
+      streamRef.current = { reasoning: "", text: "" };
+      setStreaming({ reasoning: "", text: "" });
+      /* Batch UI updates ~12fps: typing feels instant, rendering stays cheap */
+      flushRef.current = setInterval(() => {
+        setStreaming({ ...streamRef.current });
+        scrollToBottom();
+      }, 80);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let donePayload: any = null;
+      let streamError: string | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (!line) continue;
+          try {
+            const ev = JSON.parse(line);
+            if (ev.t === "text") streamRef.current.text += ev.d;
+            else if (ev.t === "reasoning") streamRef.current.reasoning += ev.d;
+            else if (ev.t === "done") donePayload = ev;
+            else if (ev.t === "error") streamError = ev.d || "Generation failed";
+          } catch {
+            /* ignore partial line */
+          }
+        }
       }
 
-      if (data.usage) {
-        setUsage(data.usage);
+      if (flushRef.current) {
+        clearInterval(flushRef.current);
+        flushRef.current = null;
       }
+      setStreaming(null);
+
+      if (streamError) throw new Error(streamError);
+      if (!donePayload) throw new Error("Response incomplete — please try again");
 
       setMessages((prev) => [
         ...prev.filter((m) => m.id !== optimisticUserMsg.id),
-        data.userMessage,
-        data.assistantMessage,
+        donePayload.userMessage,
+        donePayload.assistantMessage,
       ]);
 
-      if (data.chat) {
+      if (donePayload.chat) {
         setChats((prev) =>
-          prev.map((c) => (c.id === data.chat.id ? { ...c, ...data.chat } : c))
+          prev.map((c) => (c.id === donePayload.chat.id ? { ...c, ...donePayload.chat } : c))
         );
       }
+      if (donePayload.usage) setUsage(donePayload.usage);
 
       scrollToBottom();
+      return;
     } catch (err: any) {
+      if (flushRef.current) {
+        clearInterval(flushRef.current);
+        flushRef.current = null;
+      }
+      setStreaming(null);
       toast.error(err?.message || "Failed to generate answer");
       setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsg.id));
     } finally {
@@ -319,6 +377,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
             messages={messages}
             loadingMessages={loadingMessages}
             generating={generating}
+            streaming={streaming}
             me={me}
             onSendMessage={handleSendMessage}
           />
@@ -369,6 +428,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
               messages={messages}
               loadingMessages={loadingMessages}
               generating={generating}
+              streaming={streaming}
               me={me}
               onSendMessage={handleSendMessage}
             />
@@ -586,6 +646,7 @@ function ChatViewport({
   messages,
   loadingMessages,
   generating,
+  streaming,
   me,
   onSendMessage,
 }: {
@@ -593,6 +654,7 @@ function ChatViewport({
   messages: NaturalMessageRow[];
   loadingMessages: boolean;
   generating: boolean;
+  streaming: { reasoning: string; text: string } | null;
   me: UserRow;
   onSendMessage: (text: string) => void;
 }) {
@@ -725,8 +787,8 @@ function ChatViewport({
             );
           })}
 
-          {/* Generating Animation */}
-          {generating && (
+          {/* Waiting for first chunk (connection establishing) */}
+          {generating && !streaming && (
             <div className="w-full py-4 bg-muted/30 animate-in fade-in duration-200">
               <div className="w-full px-3 sm:px-5">
                 <div className="max-w-3xl mx-auto flex gap-2.5 sm:gap-3">
@@ -738,6 +800,53 @@ function ChatViewport({
                     <span className="text-sm text-muted-foreground font-medium">
                       Thinking…
                     </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* LIVE STREAM: reasoning (what the model is doing) + answer typing out — ChatGPT/v0 style */}
+          {streaming && (
+            <div className="w-full py-4 animate-in fade-in duration-200">
+              <div className="w-full px-3 sm:px-5">
+                <div className="max-w-3xl mx-auto space-y-3">
+                  {/* 1. Live reasoning panel — the model's thought process as it happens */}
+                  {streaming.reasoning && (
+                    <div className="rounded-xl border border-border/60 bg-muted/40 px-3 py-2.5 animate-in fade-in">
+                      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
+                        <Sparkles className="size-3 animate-pulse text-primary" />
+                        <span>Thinking process</span>
+                      </div>
+                      <div className="nice-scroll max-h-44 overflow-y-auto whitespace-pre-wrap text-[12px] leading-relaxed text-muted-foreground/90">
+                        {streaming.reasoning}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. Live answer — tokens typed out line by line with a cursor */}
+                  <div className="flex gap-2.5 sm:gap-3">
+                    <div className="size-6 sm:size-7 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0">
+                      <Bot className="size-3 sm:size-3.5 animate-pulse" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      {streaming.text ? (
+                        <div className="text-foreground">
+                          <MarkdownRenderer content={stripVisualJson(streaming.text)} />
+                          <span
+                            className="ml-0.5 inline-block h-4 w-[3px] animate-pulse rounded-full bg-primary align-[-3px]"
+                            aria-hidden
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 pt-0.5">
+                          <Loader2 className="size-4 animate-spin text-primary" />
+                          <span className="text-sm text-muted-foreground font-medium">
+                            Thinking…
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

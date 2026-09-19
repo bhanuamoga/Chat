@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateText } from "ai";
+import { streamText } from "ai";
 import { getGeminiModel, NATURAL_CHAT_SYSTEM_PROMPT } from "@/lib/gemini";
 import { db } from "@/db";
 import { naturalChats, naturalMessages } from "@/db/schema";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { getDailyUsage } from "@/lib/rate-limit";
 import type { VisualData } from "@/lib/types";
@@ -32,7 +32,15 @@ function extractVisualData(rawText: string): { text: string; visualData: VisualD
   return { text: cleanText, visualData };
 }
 
-// POST /api/natural/chats/[id]/messages
+/**
+ * POST /api/natural/chats/[id]/messages
+ * Streams the Gemini answer LIVE as newline-delimited JSON events:
+ *   {"t":"reasoning","d":"…"}  - the model's live thinking (Gemini includes thoughts)
+ *   {"t":"text","d":"…"}       - answer token deltas (client types them out like ChatGPT/v0)
+ *   {"t":"done", …}            - persisted rows: userMessage, assistantMessage, chat, tokenUsage, usage
+ *   {"t":"error","d":"…"}
+ * Non-streaming errors (auth / rate-limit / chat missing) still return plain JSON errors.
+ */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -63,7 +71,7 @@ export async function POST(
     return NextResponse.json({ error: "Chat not found" }, { status: 404 });
   }
 
-  // 0. Daily per-user prompt rate limit (resets at midnight IST)
+  // Daily per-user prompt rate limit (resets at midnight IST)
   const usageBefore = await getDailyUsage(userId);
   if (usageBefore.reached) {
     return NextResponse.json(
@@ -76,7 +84,7 @@ export async function POST(
     );
   }
 
-  // 1. Insert user message
+  // 1. Insert user message first (it exists even if generation fails mid-way)
   const [userMsg] = await db
     .insert(naturalMessages)
     .values({
@@ -100,8 +108,7 @@ export async function POST(
     content: m.content,
   }));
 
-  // 3. Call Google Gemini 2.5 Flash via AI SDK
-  let aiResult;
+  // 3. Start Gemini 2.5 Flash streaming (AI SDK 7) with live "thoughts"
   let modelInstance;
   try {
     modelInstance = getGeminiModel();
@@ -116,100 +123,136 @@ export async function POST(
     );
   }
 
-  try {
-    aiResult = await generateText({
-      model: modelInstance,
-      system: chat.systemPrompt || NATURAL_CHAT_SYSTEM_PROMPT,
-      messages: history,
-    });
-  } catch (aiErr: any) {
-    console.error("[natural-chat] Gemini API error:", aiErr);
-    return NextResponse.json(
-      {
-        error:
-          aiErr?.message ||
-          "Gemini API returned an error. Please verify GEMINI_API_KEY is active and valid.",
+  const result = streamText({
+    model: modelInstance,
+    system: chat.systemPrompt || NATURAL_CHAT_SYSTEM_PROMPT,
+    messages: history,
+    providerOptions: {
+      google: {
+        thinkingConfig: {
+          // include the model's live reasoning so the UI can show "what it's doing"
+          includeThoughts: true,
+        },
       },
-      { status: 500 }
-    );
-  }
-
-  const rawAnswer = aiResult.text || "";
-  const { text: cleanContent, visualData } = extractVisualData(rawAnswer);
-
-  // Approximate or actual token usage from AI SDK response (ai v3/v4 exports promptTokens or inputTokens)
-  const usageAny = (aiResult.usage || {}) as any;
-  const promptTokens =
-    usageAny.promptTokens ??
-    usageAny.inputTokens ??
-    Math.round((userContent.length + history.reduce((acc, h) => acc + h.content.length, 0)) / 4);
-  const completionTokens =
-    usageAny.completionTokens ?? usageAny.outputTokens ?? Math.round(cleanContent.length / 4);
-  const totalTokens = promptTokens + completionTokens;
-
-  // 4. Save assistant message with token usage & visual data
-  const [assistantMsg] = await db
-    .insert(naturalMessages)
-    .values({
-      chatId: id,
-      role: "assistant",
-      content: cleanContent,
-      visualData,
-      promptTokens,
-      completionTokens,
-      totalTokens,
-      modelUsed: "gemini-2.5-flash",
-    })
-    .returning();
-
-  // 5. Update chat title if it was the first turn, and accumulate token telemetry
-  const isFirstTurn = previousMsgs.length <= 1;
-  const newPromptTotal = (chat.totalPromptTokens || 0) + promptTokens;
-  const newCompletionTotal = (chat.totalCompletionTokens || 0) + completionTokens;
-  const newGrandTotal = (chat.totalTokens || 0) + totalTokens;
-
-  const updateSet: {
-    updatedAt: Date;
-    totalPromptTokens: number;
-    totalCompletionTokens: number;
-    totalTokens: number;
-    title?: string;
-  } = {
-    updatedAt: new Date(),
-    totalPromptTokens: newPromptTotal,
-    totalCompletionTokens: newCompletionTotal,
-    totalTokens: newGrandTotal,
-  };
-
-  if (isFirstTurn && userContent.length > 0) {
-    updateSet.title = userContent.slice(0, 50).trim();
-  }
-
-  const [updatedChat] = await db
-    .update(naturalChats)
-    .set(updateSet)
-    .where(eq(naturalChats.id, id))
-    .returning();
-
-  return NextResponse.json({
-    userMessage: {
-      ...userMsg,
-      createdAt: userMsg.createdAt.toISOString(),
     },
-    assistantMessage: {
-      ...assistantMsg,
-      createdAt: assistantMsg.createdAt.toISOString(),
+  });
+
+  const encoder = new TextEncoder();
+  let fullText = "";
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (obj: unknown) =>
+        controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+
+      try {
+        for await (const part of result.fullStream as AsyncIterable<any>) {
+          const p = part as { type: string; delta?: string; textDelta?: string };
+          if (p.type === "text-delta" || p.type === "text") {
+            const delta = p.delta ?? p.textDelta ?? "";
+            if (delta) {
+              fullText += delta;
+              send({ t: "text", d: delta });
+            }
+          } else if (p.type === "reasoning-delta" || p.type === "reasoning") {
+            const delta = p.delta ?? p.textDelta ?? "";
+            if (delta) {
+              send({ t: "reasoning", d: delta });
+            }
+          } else if (p.type === "error") {
+            throw (part as { error?: unknown }).error;
+          }
+        }
+
+        // 4. Persist assistant message once the stream completes
+        const rawAnswer = fullText;
+        const { text: cleanContent, visualData } = extractVisualData(rawAnswer);
+
+        const usageAny = ((await result.usage) || {}) as any;
+        const promptTokens =
+          usageAny.promptTokens ??
+          usageAny.inputTokens ??
+          Math.round(
+            (userContent.length + history.reduce((acc, h) => acc + h.content.length, 0)) / 4
+          );
+        const completionTokens =
+          usageAny.completionTokens ?? usageAny.outputTokens ?? Math.round(cleanContent.length / 4);
+        const totalTokens = promptTokens + completionTokens;
+
+        const [assistantMsg] = await db
+          .insert(naturalMessages)
+          .values({
+            chatId: id,
+            role: "assistant",
+            content: cleanContent,
+            visualData,
+            promptTokens,
+            completionTokens,
+            totalTokens,
+            modelUsed: "gemini-2.5-flash",
+          })
+          .returning();
+
+        // 5. Title on first turn + token telemetry accumulation
+        const isFirstTurn = previousMsgs.length <= 1;
+        const newPromptTotal = (chat.totalPromptTokens || 0) + promptTokens;
+        const newCompletionTotal = (chat.totalCompletionTokens || 0) + completionTokens;
+        const newGrandTotal = (chat.totalTokens || 0) + totalTokens;
+
+        const updateSet: {
+          updatedAt: Date;
+          totalPromptTokens: number;
+          totalCompletionTokens: number;
+          totalTokens: number;
+          title?: string;
+        } = {
+          updatedAt: new Date(),
+          totalPromptTokens: newPromptTotal,
+          totalCompletionTokens: newCompletionTotal,
+          totalTokens: newGrandTotal,
+        };
+
+        if (isFirstTurn && userContent.length > 0) {
+          updateSet.title = userContent.slice(0, 50).trim();
+        }
+
+        const [updatedChat] = await db
+          .update(naturalChats)
+          .set(updateSet)
+          .where(eq(naturalChats.id, id))
+          .returning();
+
+        send({
+          t: "done",
+          userMessage: { ...userMsg, createdAt: userMsg.createdAt.toISOString() },
+          assistantMessage: { ...assistantMsg, createdAt: assistantMsg.createdAt.toISOString() },
+          chat: {
+            ...updatedChat,
+            createdAt: updatedChat.createdAt.toISOString(),
+            updatedAt: updatedChat.updatedAt.toISOString(),
+          },
+          tokenUsage: { promptTokens, completionTokens, totalTokens },
+          usage: await getDailyUsage(userId),
+        });
+      } catch (err: any) {
+        console.error("[natural-chat] streaming error:", err);
+        send({
+          t: "error",
+          d:
+            err?.message ||
+            "Gemini API returned an error during streaming. Please try again.",
+        });
+      } finally {
+        controller.close();
+      }
     },
-    chat: {
-      ...updatedChat,
-      createdAt: updatedChat.createdAt.toISOString(),
-      updatedAt: updatedChat.updatedAt.toISOString(),
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
     },
-    tokenUsage: {
-      promptTokens,
-      completionTokens,
-      totalTokens,
-    },
-    usage: await getDailyUsage(userId),
   });
 }
