@@ -847,36 +847,36 @@ function ChatViewport({
               >
                 {/* ChatGPT style: small padding, avatar + content inline, no max-width on mobile */}
                 <div className="w-full px-3 sm:px-5 py-4">
-                  <div className="max-w-[60rem] mx-auto flex gap-2.5 sm:gap-3">
-                    {/* Avatar */}
-                    <div className="shrink-0 pt-0.5">
+                  <div className="max-w-3xl mx-auto">
+                    {/* Sender header — avatar & name on one slim line; the message spans the FULL column like the composer */}
+                    <div className="flex items-center gap-1.5 mb-1.5">
                       {isUser ? (
                         <UserAvatar
                           emoji={me.avatarEmoji}
                           color={me.avatarColor}
                           avatarUrl={me.avatarUrl}
                           name={me.displayName}
-                          size={26}
+                          size={18}
                           className="shadow-xs"
                         />
                       ) : (
-                        <div className="size-6 sm:size-7 rounded-lg bg-primary/15 text-primary flex items-center justify-center shadow-xs">
-                          <JarvisLogo className="size-3 sm:size-3.5" />
-                        </div>
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src="/jarvis-hero.png"
+                          alt="Jarvis"
+                          className="size-[18px] shrink-0 rounded-md object-cover ring-1 ring-border/60"
+                        />
+                      )}
+                      <span className="text-xs font-semibold text-foreground">
+                        {isUser ? me.displayName : prettyModelLabel(m.modelUsed)}
+                      </span>
+                      {!isUser && (
+                        <span className="text-[10px] text-emerald-500 font-medium">AI</span>
                       )}
                     </div>
 
-                    {/* Content */}
-                    <div className="min-w-0 flex-1 overflow-hidden">
-                      {/* Sender label */}
-                      <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-xs font-semibold text-foreground">
-                      {isUser ? me.displayName : prettyModelLabel(m.modelUsed)}
-                    </span>
-                        {!isUser && (
-                          <span className="text-[10px] text-emerald-500 font-medium">AI</span>
-                        )}
-                      </div>
+                    {/* Content — full width, no left rail */}
+                    <div className="w-full overflow-hidden">
 
                       {/* Message body — fills remaining width */}
                       {isUser ? (
@@ -927,7 +927,7 @@ function ChatViewport({
           {/* THINKING phase — ChatGPT style: quiet line with a live timer, no spinner box */}
           {(generating || streaming) && !streaming?.text && (
             <div className="w-full px-3 sm:px-5 py-3 animate-in fade-in duration-200">
-              <div className="max-w-[60rem] mx-auto space-y-1.5">
+              <div className="max-w-3xl mx-auto space-y-1.5">
                 <ThinkingRow startTs={thinkStartTs} />
                 {streaming?.reasoning && (
                   <p className="nice-scroll max-h-40 overflow-y-auto whitespace-pre-wrap border-l-2 border-primary/30 pl-3 text-[13px] italic leading-relaxed text-muted-foreground/85 animate-in fade-in duration-300">
@@ -941,7 +941,7 @@ function ChatViewport({
           {/* ANSWER phase — thought collapses to "Thought for N seconds"; answer types line-by-line */}
           {streaming?.text && (
             <div className="w-full px-3 sm:px-5 py-3 animate-in fade-in duration-200">
-              <div className="max-w-[60rem] mx-auto space-y-3">
+              <div className="max-w-3xl mx-auto space-y-3">
                 {streaming.reasoning && (
                   <details className="group">
                     <summary className="flex w-fit cursor-pointer select-none list-none items-center gap-1.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
@@ -955,11 +955,17 @@ function ChatViewport({
                   </details>
                 )}
 
-                <div className="flex gap-2.5 sm:gap-3">
-                  <div className="size-6 sm:size-7 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0">
-                    <JarvisLogo className="size-3 sm:size-3.5" />
+                <div>
+                  <div className="mb-1.5 flex items-center gap-1.5">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src="/jarvis-hero.png"
+                      alt="Jarvis"
+                      className="size-[18px] shrink-0 rounded-md object-cover ring-1 ring-border/60"
+                    />
+                    <span className="text-xs font-semibold text-foreground">Jarvis</span>
                   </div>
-                  <div className="min-w-0 flex-1 text-foreground">
+                  <div className="w-full text-foreground">
                     <MarkdownRenderer content={stripVisualJson(streaming.text)} />
                     <span
                       className="ml-0.5 inline-block h-4 w-[3px] animate-pulse rounded-full bg-primary align-[-3px]"
@@ -1010,7 +1016,7 @@ function ChatInput({
 
   return (
     <div className="shrink-0 px-3 pb-3 pt-1 sm:px-4 sm:pb-4">
-      <div className="max-w-[60rem] mx-auto">
+      <div className="max-w-3xl mx-auto">
         {/* Daily limit notice — shown above the input, ChatGPT style */}
         {reached && usage && (
           <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] font-medium text-amber-600 dark:text-amber-400">
@@ -1129,7 +1135,7 @@ function ThinkingRow({ startTs }: { startTs: number | null }) {
 function NoApiKeyBanner() {
   return (
     <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 sm:px-5 py-2.5 animate-in fade-in duration-200">
-      <div className="max-w-[60rem] mx-auto flex items-center gap-2.5 text-[12px] font-medium text-amber-600 dark:text-amber-400">
+      <div className="max-w-3xl mx-auto flex items-center gap-2.5 text-[12px] font-medium text-amber-600 dark:text-amber-400">
         <AlertTriangle className="size-4 shrink-0" />
         <span>
           No valid AI API key is configured.{" "}

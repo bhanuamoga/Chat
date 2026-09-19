@@ -97,6 +97,23 @@ export function uid(): string {
 /** Normalize a web-search citation: Gemini grounding URLs are wrapped in a
  *  vertexaisearch.cloud.google.com redirect, so recover the REAL site domain
  *  from the chunk title when it looks like a host name. */
+/** "how-heavy-metals-affect-your-brain" -> "How Heavy Metals Affect Your Brain" */
+function titleFromSlug(raw: string): string | undefined {
+  try {
+    const u = new URL(raw);
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (!parts.length) return undefined;
+    const last = decodeURIComponent(parts[parts.length - 1])
+      .replace(/\.(html?|php|aspx?|jsp)$/i, "")
+      .replace(/[-_+]+/g, " ")
+      .trim();
+    if (last.length < 4 || /^[\d-]+$/.test(last)) return undefined;
+    return last;
+  } catch {
+    return undefined;
+  }
+}
+
 export function normalizeSourceRef(s: { url: string; title?: string; domain?: string }) {
   let host = "";
   try {
@@ -119,6 +136,6 @@ export function normalizeSourceRef(s: { url: string; title?: string; domain?: st
     domain = host;
   }
 
-  const title = s.title && !/vertexaisearch/.test(s.title) ? s.title : undefined;
+  const title = s.title && !/vertexaisearch/.test(s.title) ? s.title : titleFromSlug(s.url);
   return { url: s.url, title, domain };
 }
