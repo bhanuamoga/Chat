@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { naturalChats, naturalMessages } from "@/db/schema";
+import { naturalChats, naturalMessages, users } from "@/db/schema";
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { DailyUsageInfo } from "@/lib/types";
 
@@ -26,29 +26,35 @@ export function nextDayStartIST(): Date {
  * sent since the start of the current IST day. No extra table needed — the
  * usage is derived from the message history itself, so it resets automatically
  * every day at midnight IST.
+ *
+ * Admins (users.role = 'admin', set manually in the DB) bypass the limit.
  */
 export async function getDailyUsage(userId: string): Promise<DailyUsageInfo> {
   const since = todayStartIST();
 
-  const rows = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(naturalMessages)
-    .innerJoin(naturalChats, eq(naturalMessages.chatId, naturalChats.id))
-    .where(
-      and(
-        eq(naturalChats.userId, userId),
-        eq(naturalMessages.role, "user"),
-        gte(naturalMessages.createdAt, since)
-      )
-    );
+  const [[usageRow], [userRow]] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(naturalMessages)
+      .innerJoin(naturalChats, eq(naturalMessages.chatId, naturalChats.id))
+      .where(
+        and(
+          eq(naturalChats.userId, userId),
+          eq(naturalMessages.role, "user"),
+          gte(naturalMessages.createdAt, since)
+        )
+      ),
+    db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1),
+  ]);
 
-  const used = rows[0]?.count ?? 0;
+  const used = usageRow?.count ?? 0;
+  const isAdmin = (userRow?.role || "").trim().toLowerCase() === "admin";
 
   return {
     used,
     limit: DAILY_PROMPT_LIMIT,
-    remaining: Math.max(0, DAILY_PROMPT_LIMIT - used),
-    reached: used >= DAILY_PROMPT_LIMIT,
+    remaining: isAdmin ? DAILY_PROMPT_LIMIT : Math.max(0, DAILY_PROMPT_LIMIT - used),
+    reached: isAdmin ? false : used >= DAILY_PROMPT_LIMIT,
     resetsAt: nextDayStartIST().toISOString(),
   };
 }

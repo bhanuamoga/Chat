@@ -24,6 +24,7 @@ export const users = pgTable(
     avatarColor: text("avatar_color").notNull().default("#00a884"),
     avatarEmoji: text("avatar_emoji").notNull().default("😀"),
     bio: text("bio").notNull().default("Hey there! I am using Morr Chat."),
+    role: text("role").notNull().default("user"), // 'user' | 'admin' (admins bypass the daily Natural Chat prompt limit; set manually in DB)
     lastSeen: timestamp("last_seen", { withTimezone: true }).defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },

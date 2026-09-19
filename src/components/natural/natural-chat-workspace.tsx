@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   Search,
   Clock,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,8 +64,9 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
   /* Daily prompt quota (resets at midnight IST) */
   const [usage, setUsage] = useState<DailyUsageInfo | null>(null);
   /* Live AI streaming (reasoning thought-process + answer typing out) */
-  const [streaming, setStreaming] = useState<{ reasoning: string; text: string } | null>(null);
-  const streamRef = useRef({ reasoning: "", text: "" });
+  const [streaming, setStreaming] = useState<{ reasoning: string; text: string; thoughtSecs: number } | null>(null);
+  const streamRef = useRef({ reasoning: "", text: "", thoughtSecs: 0 });
+  const streamStartRef = useRef(0);
   const flushRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /* Mobile: false = showing chat list (full screen), true = showing conversation */
   const [mobileViewChat, setMobileViewChat] = useState(false);
@@ -253,13 +255,26 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
       if (!res.body) throw new Error("No response stream from server");
 
       /* -------- Live streaming (AI SDK fullStream -> NDJSON lines) -------- */
-      streamRef.current = { reasoning: "", text: "" };
-      setStreaming({ reasoning: "", text: "" });
-      /* Batch UI updates ~12fps: typing feels instant, rendering stays cheap */
+      streamRef.current = { reasoning: "", text: "", thoughtSecs: 0 };
+      streamStartRef.current = Date.now();
+      setStreaming({ reasoning: "", text: "", thoughtSecs: 0 });
+      /* Smooth typewriter reveal (~17fps): even a big blob reveals progressively */
       flushRef.current = setInterval(() => {
-        setStreaming({ ...streamRef.current });
+        const target = streamRef.current;
+        setStreaming((prev) => {
+          const reveal = (cur: string, tgt: string) => {
+            if (cur.length >= tgt.length) return tgt;
+            const step = Math.max(20, Math.ceil((tgt.length - cur.length) * 0.22));
+            return tgt.slice(0, cur.length + step);
+          };
+          return {
+            reasoning: reveal(prev?.reasoning ?? "", target.reasoning),
+            text: reveal(prev?.text ?? "", target.text),
+            thoughtSecs: target.thoughtSecs,
+          };
+        });
         scrollToBottom();
-      }, 80);
+      }, 60);
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -278,8 +293,16 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
           if (!line) continue;
           try {
             const ev = JSON.parse(line);
-            if (ev.t === "text") streamRef.current.text += ev.d;
-            else if (ev.t === "reasoning") streamRef.current.reasoning += ev.d;
+            if (ev.t === "text") {
+              /* seconds spent "thinking" = time until the first answer token */
+              if (!streamRef.current.text && streamRef.current.thoughtSecs === 0) {
+                streamRef.current.thoughtSecs = Math.max(
+                  1,
+                  Math.round((Date.now() - streamStartRef.current) / 1000)
+                );
+              }
+              streamRef.current.text += ev.d;
+            } else if (ev.t === "reasoning") streamRef.current.reasoning += ev.d;
             else if (ev.t === "done") donePayload = ev;
             else if (ev.t === "error") streamError = ev.d || "Generation failed";
           } catch {
@@ -654,7 +677,7 @@ function ChatViewport({
   messages: NaturalMessageRow[];
   loadingMessages: boolean;
   generating: boolean;
-  streaming: { reasoning: string; text: string } | null;
+  streaming: { reasoning: string; text: string; thoughtSecs: number } | null;
   me: UserRow;
   onSendMessage: (text: string) => void;
 }) {
@@ -787,66 +810,50 @@ function ChatViewport({
             );
           })}
 
-          {/* Waiting for first chunk (connection establishing) */}
-          {generating && !streaming && (
-            <div className="w-full py-4 bg-muted/30 animate-in fade-in duration-200">
-              <div className="w-full px-3 sm:px-5">
-                <div className="max-w-3xl mx-auto flex gap-2.5 sm:gap-3">
-                  <div className="size-6 sm:size-7 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0">
-                    <Bot className="size-3 sm:size-3.5 animate-pulse" />
-                  </div>
-                  <div className="flex items-center gap-2 pt-0.5">
-                    <Loader2 className="size-4 animate-spin text-primary" />
-                    <span className="text-sm text-muted-foreground font-medium">
-                      Thinking…
-                    </span>
-                  </div>
+          {/* THINKING phase — ChatGPT style: one quiet line, no spinner box */}
+          {(generating || streaming) && !streaming?.text && (
+            <div className="w-full px-3 sm:px-5 py-3 animate-in fade-in duration-200">
+              <div className="max-w-3xl mx-auto space-y-1.5">
+                <div className="flex items-center gap-2 text-[13.5px] font-medium text-muted-foreground">
+                  <Sparkles className="size-3.5 animate-pulse text-primary" />
+                  <span>Thinking…</span>
                 </div>
+                {streaming?.reasoning && (
+                  <p className="whitespace-pre-wrap border-l-2 border-border/70 pl-3 text-[13px] italic leading-relaxed text-muted-foreground/80 animate-in fade-in duration-300">
+                    {streaming.reasoning}
+                  </p>
+                )}
               </div>
             </div>
           )}
 
-          {/* LIVE STREAM: reasoning (what the model is doing) + answer typing out — ChatGPT/v0 style */}
-          {streaming && (
-            <div className="w-full py-4 animate-in fade-in duration-200">
-              <div className="w-full px-3 sm:px-5">
-                <div className="max-w-3xl mx-auto space-y-3">
-                  {/* 1. Live reasoning panel — the model's thought process as it happens */}
-                  {streaming.reasoning && (
-                    <div className="rounded-xl border border-border/60 bg-muted/40 px-3 py-2.5 animate-in fade-in">
-                      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
-                        <Sparkles className="size-3 animate-pulse text-primary" />
-                        <span>Thinking process</span>
-                      </div>
-                      <div className="nice-scroll max-h-44 overflow-y-auto whitespace-pre-wrap text-[12px] leading-relaxed text-muted-foreground/90">
-                        {streaming.reasoning}
-                      </div>
-                    </div>
-                  )}
+          {/* ANSWER phase — thought collapses to "Thought for N seconds"; answer types line-by-line */}
+          {streaming?.text && (
+            <div className="w-full px-3 sm:px-5 py-3 animate-in fade-in duration-200">
+              <div className="max-w-3xl mx-auto space-y-3">
+                {streaming.reasoning && (
+                  <details className="group">
+                    <summary className="flex w-fit cursor-pointer select-none list-none items-center gap-1.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+                      <Sparkles className="size-3.5 text-primary" />
+                      <span>Thought for {streaming.thoughtSecs || 1} seconds</span>
+                      <ChevronDown className="size-3.5 transition-transform duration-200 group-open:rotate-180" />
+                    </summary>
+                    <p className="nice-scroll mt-1.5 max-h-56 overflow-y-auto whitespace-pre-wrap border-l-2 border-border/70 pl-3 text-[13px] italic leading-relaxed text-muted-foreground/80 animate-in fade-in duration-300">
+                      {streaming.reasoning}
+                    </p>
+                  </details>
+                )}
 
-                  {/* 2. Live answer — tokens typed out line by line with a cursor */}
-                  <div className="flex gap-2.5 sm:gap-3">
-                    <div className="size-6 sm:size-7 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0">
-                      <Bot className="size-3 sm:size-3.5 animate-pulse" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      {streaming.text ? (
-                        <div className="text-foreground">
-                          <MarkdownRenderer content={stripVisualJson(streaming.text)} />
-                          <span
-                            className="ml-0.5 inline-block h-4 w-[3px] animate-pulse rounded-full bg-primary align-[-3px]"
-                            aria-hidden
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 pt-0.5">
-                          <Loader2 className="size-4 animate-spin text-primary" />
-                          <span className="text-sm text-muted-foreground font-medium">
-                            Thinking…
-                          </span>
-                        </div>
-                      )}
-                    </div>
+                <div className="flex gap-2.5 sm:gap-3">
+                  <div className="size-6 sm:size-7 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0">
+                    <Bot className="size-3 sm:size-3.5" />
+                  </div>
+                  <div className="min-w-0 flex-1 text-foreground">
+                    <MarkdownRenderer content={stripVisualJson(streaming.text)} />
+                    <span
+                      className="ml-0.5 inline-block h-4 w-[3px] animate-pulse rounded-full bg-primary align-[-3px]"
+                      aria-hidden
+                    />
                   </div>
                 </div>
               </div>
