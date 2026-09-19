@@ -7,7 +7,6 @@ import {
   parseAiApiConfig,
   listProviderModels,
   maskApiKey,
-  getDefaultModels,
   AI_API_PROVIDERS,
   type AiApiConfig,
   type AiApiProvider,
@@ -37,8 +36,7 @@ async function saveConfig(userId: string, cfg: AiApiConfig): Promise<void> {
 }
 
 /** Mask keys before anything reaches the browser. */
-async function toClient(cfg: AiApiConfig): Promise<AiApisClientConfig> {
-  const defaultModels = await getDefaultModels();
+function toClient(cfg: AiApiConfig): AiApisClientConfig {
   return {
     entries: cfg.entries.map((e) => ({
       id: e.id,
@@ -49,7 +47,6 @@ async function toClient(cfg: AiApiConfig): Promise<AiApisClientConfig> {
     })),
     defaultEntryId: cfg.defaultEntryId,
     rateLimit: cfg.rateLimit,
-    defaultModels,
   };
 }
 
@@ -116,6 +113,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    /* VALIDATE on save, every time: hit the provider with this key and make
+       sure the chosen models really exist on the live catalog. */
+    let liveModels: string[];
+    try {
+      liveModels = await listProviderModels(provider, apiKey);
+    } catch (err: any) {
+      return NextResponse.json(
+        {
+          error: `Invalid or expired API key — it was rejected by ${
+            AI_API_PROVIDERS.find((x) => x.id === provider)?.label
+          }: ${err?.message || "validation failed"}`,
+        },
+        { status: 400 }
+      );
+    }
+    const unknown = models.filter((m) => !liveModels.includes(m));
+    if (unknown.length) {
+      return NextResponse.json(
+        {
+          error: `Not available on this key: ${unknown
+            .slice(0, 3)
+            .join(", ")}${unknown.length > 3 ? ` (+${unknown.length - 3} more)` : ""}. Re-fetch models and pick from the live list.`,
+        },
+        { status: 400 }
+      );
+    }
+
     const cfg = await loadConfig(userId);
     if (cfg.entries.length >= MAX_ENTRIES) {
       return NextResponse.json(
@@ -135,7 +159,7 @@ export async function POST(req: NextRequest) {
     if (!cfg.defaultEntryId) cfg.defaultEntryId = cfg.entries[0].id;
 
     await saveConfig(userId, cfg);
-    return NextResponse.json(await toClient(cfg));
+    return NextResponse.json(toClient(cfg));
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

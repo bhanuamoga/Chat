@@ -146,8 +146,6 @@ export type AiApisClientConfig = {
   entries: AiApiEntryClient[];
   defaultEntryId: string | null;
   rateLimit: { mode: "5" | "10" | "custom" | "unlimited"; custom: number | null };
-  /** Live catalog of the built-in server Gemini key (fetched from Google) */
-  defaultModels: string[];
 };
 
 export type NaturalChatRow = {

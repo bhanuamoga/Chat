@@ -106,13 +106,24 @@ export async function POST(
       wantModel
     );
   } catch (keyErr: any) {
+    const msg = String(keyErr?.message || "");
+    if (msg.startsWith("NO_API_KEY:")) {
+      return NextResponse.json(
+        {
+          error: msg.replace("NO_API_KEY: ", ""),
+          code: "NO_API_KEY",
+        },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       {
         error:
-          keyErr?.message ||
-          "AI API key is not configured. Add one on the AI APIs page or contact the admin.",
+          msg ||
+          "AI API key is not configured. Add a valid one on the AI APIs page.",
+        code: "NO_API_KEY",
       },
-      { status: 500 }
+      { status: 400 }
     );
   }
   const { model: modelInstance, modelId, provider, sourceName } = resolved;

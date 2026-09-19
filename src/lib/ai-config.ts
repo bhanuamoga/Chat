@@ -174,43 +174,23 @@ export async function listProviderModels(
   throw new Error(`Unknown provider: ${provider}`);
 }
 
-const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
-
-/* Cache the built-in Gemini catalog so we don't hammer Google on every GET. */
-let defaultModelsCache: { at: number; models: string[] } | null = null;
-
-/** Live model list for the built-in (server env) Gemini key. */
-export async function getDefaultModels(): Promise<string[]> {
-  const apiKey =
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-    process.env.GOOGLE_API_KEY;
-  if (!apiKey) return [DEFAULT_GEMINI_MODEL];
-  if (defaultModelsCache && Date.now() - defaultModelsCache.at < 30 * 60 * 1000) {
-    return defaultModelsCache.models;
-  }
-  try {
-    const models = await listProviderModels("gemini", apiKey);
-    defaultModelsCache = { at: Date.now(), models };
-    return models;
-  } catch {
-    return defaultModelsCache?.models || [DEFAULT_GEMINI_MODEL];
-  }
-}
-
 export type ResolvedChatModel = {
   /** AI SDK LanguageModel (v3 spec) */
   model: any;
   modelId: string;
   provider: AiApiProvider;
-  /** Human label shown in the UI ("Morr Default" or the user's entry name) */
+  /** Human label shown in the UI — the user's entry name */
   sourceName: string;
 };
 
+/** Thrown when the user has no usable BYOK entry — chat must prompt them to add one. */
+export const NO_API_KEY_MESSAGE =
+  "NO_API_KEY: Please set a valid AI API key on the AI APIs page to start chatting.";
+
 /**
- * Pick the model to stream with: the user's chosen BYOK entry, or the
- * built-in default (server env Gemini key). Model ids come straight from
- * the entry's saved catalog — nothing is hardcoded per-call.
+ * Pick the model to stream with from the user's OWN connected API entries
+ * (configured on the AI APIs page). Model ids come straight from the entry's
+ * saved catalog. There is no built-in fallback key anymore — no key, no chat.
  */
 export async function resolveChatModel(
   config: AiApiConfig,
@@ -221,21 +201,12 @@ export async function resolveChatModel(
     (apiEntryId ? config.entries.find((e) => e.id === apiEntryId) : null) ||
     (config.defaultEntryId
       ? config.entries.find((e) => e.id === config.defaultEntryId) || null
-      : null);
+      : null) ||
+    config.entries[0] ||
+    null;
 
   if (!entry) {
-    const modelId = wantModel || DEFAULT_GEMINI_MODEL;
-    const apiKey =
-      process.env.GEMINI_API_KEY ||
-      process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-      process.env.GOOGLE_API_KEY;
-    if (!apiKey) {
-      throw new Error(
-        "GEMINI_API_KEY is missing. Please add GEMINI_API_KEY in your Vercel Environment Variables or .env"
-      );
-    }
-    const google = createGoogleGenerativeAI({ apiKey });
-    return { model: google(modelId), modelId, provider: "gemini", sourceName: "Morr Default" };
+    throw new Error(NO_API_KEY_MESSAGE);
   }
 
   const modelId =
@@ -258,7 +229,7 @@ export async function resolveChatModel(
 function defaultModelHint(provider: AiApiProvider): string {
   switch (provider) {
     case "gemini":
-      return DEFAULT_GEMINI_MODEL;
+      return "gemini-2.5-flash";
     case "openai":
       return "gpt-4o-mini";
     case "openrouter":

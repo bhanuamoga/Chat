@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Check,
   KeyRound,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -147,8 +148,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
         setApiConfig(cfg);
 
         const valid = (sel: { entryId: string | null; model: string }) => {
-          if (!sel?.model) return false;
-          if (sel.entryId === null) return cfg.defaultModels.includes(sel.model);
+          if (!sel?.entryId || !sel?.model) return false;
           const e = cfg.entries.find((x) => x.id === sel.entryId);
           return !!e && e.models.includes(sel.model);
         };
@@ -164,9 +164,8 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
 
         if (!sel) {
           const d = cfg.defaultEntryId ? cfg.entries.find((x) => x.id === cfg.defaultEntryId) : null;
-          sel = d && d.models.length
-            ? { entryId: d.id, model: d.models[0] }
-            : { entryId: null, model: cfg.defaultModels[0] || "gemini-2.5-flash" };
+          const fb = (d && d.models.length ? d : null) || (cfg.entries.length ? cfg.entries[0] : null);
+          sel = fb && fb.models.length ? { entryId: fb.id, model: fb.models[0] } : null;
         }
         setSelection(sel);
       } catch { /* composer dropdown stays on built-in default */ }
@@ -182,10 +181,13 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
 
   /* Label shown in the composer dropdown + message headers */
   const currentApiLabel = useMemo(() => {
-    if (!selection) return "Gemini 2.5 Flash";
+    if (!selection) return "No API key";
     const e = selection.entryId ? apiConfig?.entries.find((x) => x.id === selection.entryId) : null;
     return e ? `${e.name} · ${selection.model}` : selection.model;
   }, [selection, apiConfig]);
+
+  /* User must connect at least one key — no built-in fallback anymore */
+  const noApiKey = apiConfig !== null && apiConfig.entries.length === 0;
 
   /* ---- 2. Fetch messages for active chat ---- */
   useEffect(() => {
@@ -257,6 +259,10 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
   const handleSendMessage = async (textToSend?: string) => {
     const content = (textToSend || input).trim();
     if (!content || generating) return;
+    if (!selection || !selection.entryId) {
+      toast.error("Please set a valid AI API key on the AI APIs page first.");
+      return;
+    }
     if (usage?.reached) {
       toast.error(
         `Daily limit reached — ${usage.limit} prompts per day. Try again tomorrow.`
@@ -466,6 +472,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
             onNewChat={() => handleNewChat()}
             showBackButton={false}
           />
+          {noApiKey && <NoApiKeyBanner />}
           <ChatViewport
             scrollRef={scrollRef}
             messages={messages}
@@ -474,7 +481,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
             streaming={streaming}
             me={me}
             onSendMessage={handleSendMessage}
-            modelLabel={currentApiLabel}
+            modelLabel={noApiKey ? "your API key" : currentApiLabel}
           />
           <ChatInput
             inputRef={inputRef}
@@ -483,9 +490,10 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
             generating={generating}
             usage={usage}
             apiConfig={apiConfig}
+            noApiKey={noApiKey}
             selection={selection}
             onSelectModel={setSelection}
-            modelLabel={currentApiLabel}
+            modelLabel={noApiKey ? "your API key" : currentApiLabel}
             onSend={() => handleSendMessage()}
           />
         </main>
@@ -522,6 +530,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
               showBackButton={true}
               onBack={handleBackToList}
             />
+            {noApiKey && <NoApiKeyBanner />}
             <ChatViewport
               scrollRef={scrollRef}
               messages={messages}
@@ -530,7 +539,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
               streaming={streaming}
               me={me}
               onSendMessage={handleSendMessage}
-              modelLabel={currentApiLabel}
+              modelLabel={noApiKey ? "your API key" : currentApiLabel}
             />
             <ChatInput
               inputRef={inputRef}
@@ -539,9 +548,10 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
               generating={generating}
               usage={usage}
               apiConfig={apiConfig}
+              noApiKey={noApiKey}
               selection={selection}
               onSelectModel={setSelection}
-              modelLabel={currentApiLabel}
+              modelLabel={noApiKey ? "your API key" : currentApiLabel}
               onSend={() => handleSendMessage()}
             />
           </div>
@@ -960,6 +970,7 @@ function ChatInput({
   generating,
   usage,
   apiConfig,
+  noApiKey,
   selection,
   onSelectModel,
   modelLabel,
@@ -971,12 +982,13 @@ function ChatInput({
   generating: boolean;
   usage: DailyUsageInfo | null;
   apiConfig: AiApisClientConfig | null;
+  noApiKey: boolean;
   selection: { entryId: string | null; model: string } | null;
   onSelectModel: (sel: { entryId: string | null; model: string }) => void;
   modelLabel: string;
   onSend: () => void;
 }) {
-  const reached = !!usage?.reached;
+  const reached = !!usage?.reached || noApiKey;
 
   return (
     <div className="shrink-0 p-3 sm:p-4 bg-background border-t border-border/50">
@@ -990,6 +1002,23 @@ function ChatInput({
               Try again tomorrow — your quota resets at midnight.
             </span>
           </div>
+        )}
+
+        {/* Alert when the user hasn't connected any key yet */}
+        {noApiKey && (
+          <Link
+            href="/ai-apis"
+            className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/15 transition-colors"
+          >
+            <KeyRound className="size-3.5 shrink-0" />
+            <span>
+              No valid API key yet —{" "}
+              <span className="underline underline-offset-2 font-semibold">
+                set one in AI APIs
+              </span>{" "}
+              to start chatting.
+            </span>
+          </Link>
         )}
 
         {/* Composer card: textarea grows with content; toolbar row sits below it */}
@@ -1013,7 +1042,9 @@ function ChatInput({
             }}
             disabled={reached}
             placeholder={
-              reached
+              noApiKey
+                ? "Add an API key on the AI APIs page to chat…"
+                : usage?.reached
                 ? "Daily limit reached — come back tomorrow…"
                 : `Message ${modelLabel}…`
             }
@@ -1054,7 +1085,25 @@ const PROVIDER_SHORT_LABELS: Record<string, string> = {
   openrouter: "OpenRouter",
 };
 
-/** Bottom-left composer dropdown — picks which API key + which model answers (fully data-driven). */
+/** Alert strip shown in the chat when the user has no connected API key. */
+function NoApiKeyBanner() {
+  return (
+    <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 sm:px-5 py-2.5 animate-in fade-in duration-200">
+      <div className="max-w-3xl mx-auto flex items-center gap-2.5 text-[12px] font-medium text-amber-600 dark:text-amber-400">
+        <AlertTriangle className="size-4 shrink-0" />
+        <span>
+          No valid AI API key is configured.{" "}
+          <Link href="/ai-apis" className="underline underline-offset-2 font-semibold">
+            Set a valid API key in AI APIs
+          </Link>{" "}
+          to start chatting.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Bottom-left composer dropdown — picks which connected API key + which model answers (fully data-driven). */
 function ApiModelMenu({
   apiConfig,
   selection,
@@ -1069,12 +1118,8 @@ function ApiModelMenu({
   const isSelected = (entryId: string | null, model: string) =>
     selection?.entryId === entryId && selection?.model === model;
 
-  const defaultModels =
-    apiConfig?.defaultModels && apiConfig.defaultModels.length > 0
-      ? apiConfig.defaultModels
-      : ["gemini-2.5-flash"];
-
-  const triggerLabel = selection?.model || "Select model";
+  const entries = apiConfig?.entries || [];
+  const triggerLabel = selection?.model || "Add API key…";
 
   return (
     <DropdownMenu>
@@ -1094,23 +1139,13 @@ function ApiModelMenu({
         sideOffset={8}
         className="nice-scroll max-h-[320px] w-[290px] overflow-y-auto"
       >
-        {/* Built-in server key */}
-        <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Morr Default
-        </DropdownMenuLabel>
-        {defaultModels.map((m) => (
-          <DropdownMenuItem
-            key={`builtin:${m}`}
-            onClick={() => onSelect({ entryId: null, model: m })}
-            className="flex items-center justify-between gap-2 text-xs"
-          >
-            <span className="truncate">{prettyModelLabel(m)}</span>
-            {isSelected(null, m) && <Check className="size-3.5 shrink-0 text-primary" />}
-          </DropdownMenuItem>
-        ))}
-
-        {/* User's own connected APIs (keys live in their AI API config) */}
-        {(apiConfig?.entries || []).map((e) => (
+        {/* The user's own connected APIs — the ONLY source of models now */}
+        {entries.length === 0 && (
+          <div className="px-2 py-2.5 text-xs text-muted-foreground">
+            No API keys yet — connect one to start chatting.
+          </div>
+        )}
+        {entries.map((e) => (
           <div key={e.id}>
             <DropdownMenuSeparator />
             <DropdownMenuLabel className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -1136,7 +1171,7 @@ function ApiModelMenu({
         <DropdownMenuItem asChild>
           <Link href="/ai-apis" className="flex cursor-pointer items-center gap-2 text-xs font-medium">
             <KeyRound className="size-3.5 text-primary" />
-            {apiConfig?.entries?.length ? "Manage your AI APIs…" : "Add your own API key…"}
+            {entries.length ? "Manage your AI APIs…" : "Add your own API key…"}
           </Link>
         </DropdownMenuItem>
       </DropdownMenuContent>

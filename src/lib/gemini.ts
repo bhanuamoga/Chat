@@ -1,30 +1,8 @@
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
-
 /**
- * Google Gemini Provider via Vercel AI SDK
- * Reads GEMINI_API_KEY from environment variables (server-side only)
+ * Shared system prompt for Natural Chat.
+ * Provider/keys are resolved per-user from their AI API config (BYOK) —
+ * there is intentionally NO built-in server model here anymore.
  */
-export function getGeminiModel(customKey?: string) {
-  const apiKey =
-    customKey ||
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-    process.env.GOOGLE_API_KEY;
-
-  if (!apiKey) {
-    throw new Error(
-      "GEMINI_API_KEY is missing. Please add GEMINI_API_KEY in your Vercel Environment Variables or .env"
-    );
-  }
-
-  const google = createGoogleGenerativeAI({
-    apiKey,
-  });
-
-  // Using the latest gemini-2.5-flash model as requested
-  return google("gemini-2.5-flash");
-}
-
 export const NATURAL_CHAT_SYSTEM_PROMPT = `You are Morr Chat's Natural AI assistant.
 You provide helpful, concise, well-structured answers with clear formatting.
 
