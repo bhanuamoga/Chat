@@ -1,6 +1,6 @@
 /**
- * Jarvis identity mark — a unique arc-reactor-style emblem:
- * outer ring, cardinal + diagonal spokes, glowing core.
+ * Jarvis identity mark — a unique arc-reactor-style emblem.
+ * Bolder strokes + a baked-in glow so it stays crisp & bright even at 12px.
  * Rendered with currentColor so it inherits any text color.
  */
 export function JarvisLogo({ className }: { className?: string }) {
@@ -10,23 +10,24 @@ export function JarvisLogo({ className }: { className?: string }) {
       fill="none"
       className={className}
       aria-hidden="true"
+      style={{ filter: "drop-shadow(0 0 2.5px hsl(var(--primary) / 0.45))" }}
     >
       {/* core */}
-      <circle cx="12" cy="12" r="3.1" fill="currentColor" />
+      <circle cx="12" cy="12" r="3.3" fill="currentColor" />
       {/* outer ring */}
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
-      {/* inner arc dashes — the reactor feel */}
+      <circle cx="12" cy="12" r="8.4" stroke="currentColor" strokeWidth="2" />
+      {/* inner arc dashes — the reactor feel (4 ~90° arcs, one per quadrant) */}
       <path
-        d="M12 5.4 A6.6 6.6 0 0 1 16.7 7.9 M18.6 12 A6.6 6.6 0 0 1 16.7 17.9 M12 18.6 A6.6 6.6 0 0 1 7.3 16.9 M5.4 12 A6.6 6.6 0 0 1 7.9 7.3"
+        d="M12 6.4 A5.6 5.6 0 0 1 17.51 11.03 M17.6 12 A5.6 5.6 0 0 1 11.03 17.51 M12 17.6 A5.6 5.6 0 0 1 6.49 11.01 M6.4 12 A5.6 5.6 0 0 1 12.97 6.49"
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="2"
         strokeLinecap="round"
       />
       {/* cardinal spokes through the ring */}
       <path
-        d="M12 1.5v2.4M12 20.1v2.4M1.5 12h2.4M20.1 12h2.4"
+        d="M12 1.3v2.4M12 20.3v2.4M1.3 12h2.4M20.3 12h2.4"
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="2"
         strokeLinecap="round"
       />
     </svg>

@@ -556,6 +556,8 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
               >
                 <ArrowLeft className="size-5" />
               </button>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/jarvis-hero.png" alt="Jarvis" className="size-6 shrink-0 rounded-md object-cover ring-1 ring-border/70" />
               <span className="min-w-0 flex-1 truncate px-1 text-sm font-semibold text-foreground">
                 {activeChat?.title || "Chat"}
               </span>
@@ -602,9 +604,12 @@ function SidebarHeader({ me, onNewChat }: { me: UserRow; onNewChat: () => void }
       <div className="flex items-center gap-2">
         <MobileMenuDrawer user={me} />
         <div className="flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
-            <JarvisLogo className="size-4" />
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/jarvis-hero.png"
+            alt="Jarvis"
+            className="size-9 shrink-0 rounded-xl object-cover shadow-sm ring-1 ring-border"
+          />
           <div>
             <h2 className="text-sm font-semibold leading-tight">Jarvis</h2>
           </div>
@@ -692,7 +697,7 @@ function SidebarChatList({
                     : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
                 )}
               >
-                <div className="min-w-0 flex-1 pr-2">
+                <div className="min-w-0 flex-1 pr-1">
                   <p className="truncate text-xs font-medium text-foreground">
                     {c.title}
                   </p>
@@ -733,7 +738,7 @@ function SidebarChatList({
                     type="button"
                     onClick={(e) => onAskDelete(c.id, e)}
                     aria-label="Delete conversation"
-                    className="shrink-0 rounded-md p-1.5 text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive"
+                    className="ml-auto shrink-0 rounded-md p-1 text-muted-foreground/70 transition-colors hover:bg-destructive/10 hover:text-destructive"
                   >
                     <Trash2 className="size-3.5" />
                   </button>
@@ -798,9 +803,12 @@ function ChatViewport({
       ) : messages.length === 0 ? (
         /* ===== Welcome / Zero State ===== */
         <div className="flex flex-col items-center justify-center min-h-[60vh] max-w-2xl mx-auto text-center px-4 space-y-6">
-          <div className="size-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-sm">
-            <JarvisLogo className="size-7" />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/jarvis-hero.png"
+            alt="Jarvis"
+            className="size-24 rounded-3xl object-cover shadow-xl ring-1 ring-border"
+          />
 
           <div className="space-y-1.5">
             <h2 className="text-2xl font-bold tracking-tight text-foreground">
@@ -839,7 +847,7 @@ function ChatViewport({
               >
                 {/* ChatGPT style: small padding, avatar + content inline, no max-width on mobile */}
                 <div className="w-full px-3 sm:px-5 py-4">
-                  <div className="max-w-3xl mx-auto flex gap-2.5 sm:gap-3">
+                  <div className="max-w-[60rem] mx-auto flex gap-2.5 sm:gap-3">
                     {/* Avatar */}
                     <div className="shrink-0 pt-0.5">
                       {isUser ? (
@@ -919,7 +927,7 @@ function ChatViewport({
           {/* THINKING phase — ChatGPT style: quiet line with a live timer, no spinner box */}
           {(generating || streaming) && !streaming?.text && (
             <div className="w-full px-3 sm:px-5 py-3 animate-in fade-in duration-200">
-              <div className="max-w-3xl mx-auto space-y-1.5">
+              <div className="max-w-[60rem] mx-auto space-y-1.5">
                 <ThinkingRow startTs={thinkStartTs} />
                 {streaming?.reasoning && (
                   <p className="nice-scroll max-h-40 overflow-y-auto whitespace-pre-wrap border-l-2 border-primary/30 pl-3 text-[13px] italic leading-relaxed text-muted-foreground/85 animate-in fade-in duration-300">
@@ -933,7 +941,7 @@ function ChatViewport({
           {/* ANSWER phase — thought collapses to "Thought for N seconds"; answer types line-by-line */}
           {streaming?.text && (
             <div className="w-full px-3 sm:px-5 py-3 animate-in fade-in duration-200">
-              <div className="max-w-3xl mx-auto space-y-3">
+              <div className="max-w-[60rem] mx-auto space-y-3">
                 {streaming.reasoning && (
                   <details className="group">
                     <summary className="flex w-fit cursor-pointer select-none list-none items-center gap-1.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
@@ -1002,7 +1010,7 @@ function ChatInput({
 
   return (
     <div className="shrink-0 px-3 pb-3 pt-1 sm:px-4 sm:pb-4">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-[60rem] mx-auto">
         {/* Daily limit notice — shown above the input, ChatGPT style */}
         {reached && usage && (
           <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] font-medium text-amber-600 dark:text-amber-400">
@@ -1121,7 +1129,7 @@ function ThinkingRow({ startTs }: { startTs: number | null }) {
 function NoApiKeyBanner() {
   return (
     <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 sm:px-5 py-2.5 animate-in fade-in duration-200">
-      <div className="max-w-3xl mx-auto flex items-center gap-2.5 text-[12px] font-medium text-amber-600 dark:text-amber-400">
+      <div className="max-w-[60rem] mx-auto flex items-center gap-2.5 text-[12px] font-medium text-amber-600 dark:text-amber-400">
         <AlertTriangle className="size-4 shrink-0" />
         <span>
           No valid AI API key is configured.{" "}

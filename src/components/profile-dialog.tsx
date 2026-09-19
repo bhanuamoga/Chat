@@ -136,12 +136,13 @@ export function ProfileDialog({ open, onOpenChange, me, onSaved }: ProfileDialog
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
+      <DialogContent className="flex max-h-[92dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+        <DialogHeader className="border-b border-border px-5 py-4 text-left">
           <DialogTitle>Profile</DialogTitle>
-          <DialogDescription>Customise your photo, name and avatar.</DialogDescription>
+          <DialogDescription>Your public profile — photo, name and personal info.</DialogDescription>
         </DialogHeader>
 
+        <div className="nice-scroll flex-1 overflow-y-auto px-5 py-4">
         <div className="flex flex-col items-center gap-3.5 w-full">
           {/* Avatar with Photo Upload Button */}
           <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
@@ -281,11 +282,6 @@ export function ProfileDialog({ open, onOpenChange, me, onSaved }: ProfileDialog
             <Input id="profile-bio" value={bio} onChange={(e) => setBio(e.target.value)} placeholder="About" />
           </div>
 
-          <Button onClick={save} disabled={saving || !name.trim()} className="w-full mt-1">
-            {saving ? <Loader2 className="size-4 animate-spin" /> : null}
-            {saving ? "Saving…" : "Save changes"}
-          </Button>
-
           {/* Personal info — real address details, saved to the user profile */}
           <div className="w-full space-y-3 rounded-lg border border-border bg-muted/30 p-3 text-left">
             <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -320,6 +316,24 @@ export function ProfileDialog({ open, onOpenChange, me, onSaved }: ProfileDialog
               <Input id="profile-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" className="h-9 bg-card" />
             </div>
           </div>
+        </div>
+        </div>
+
+        {/* Footer — actions pinned bottom-right like a professional dialog */}
+        <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/20 px-5 py-3.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
+            Cancel
+          </Button>
+          <Button size="sm" onClick={save} disabled={saving || !name.trim()} className="gap-1.5">
+            {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+            {saving ? "Saving…" : "Save changes"}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

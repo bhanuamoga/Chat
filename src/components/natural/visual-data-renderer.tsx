@@ -167,15 +167,45 @@ function chartTypeBadgeLabel(type: string): string {
   return type.toUpperCase();
 }
 
+/** shadcn-style chart tooltip: dark border card, series dots, bold values */
+function ChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload || payload.length === 0) return null;
+  return (
+    <div className="min-w-[110px] max-w-[240px] rounded-xl border border-border/80 bg-card/95 px-3 py-2 shadow-xl backdrop-blur-sm">
+      {label !== undefined && label !== null && (
+        <p className="mb-1 truncate text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          {String(label)}
+        </p>
+      )}
+      <div className="space-y-1">
+        {payload.map((entry: any, i: number) => (
+          <div key={i} className="flex items-center justify-between gap-4 text-xs">
+            <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+              <span
+                className="size-2 shrink-0 rounded-full"
+                style={{ background: entry.stroke || entry.color || entry.payload?.fill || "hsl(var(--primary))" }}
+              />
+              <span className="truncate">{String(entry.name ?? "")}</span>
+            </span>
+            <span className="shrink-0 font-semibold tabular-nums text-foreground">
+              {typeof entry.value === "number" ? entry.value.toLocaleString() : String(entry.value)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  Fully dynamic chart: chooses rendering purely from chart.type      */
 /* ------------------------------------------------------------------ */
 function DynamicChart({ chart }: { chart: VisualChart }) {
   const type = normalizeChartType(chart.type);
+  const gid = React.useId().replace(/[^a-zA-Z0-9]/g, "");
   const nameKey = chart.xKey || "name";
   const valueKeys =
     Array.isArray(chart.yKeys) && chart.yKeys.length > 0 ? chart.yKeys : ["value"];
-  const tooltipStyle = { borderRadius: 8, fontSize: 12 };
 
   /* ---- Pie / Donut: slices are rows (name = xKey, value = yKeys[0]) ---- */
   if (type === "pie" || type === "donut") {
@@ -202,7 +232,7 @@ function DynamicChart({ chart }: { chart: VisualChart }) {
               <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
             ))}
           </Pie>
-          <RechartsTooltip contentStyle={tooltipStyle} />
+          <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted) / 0.5)" }} />
           <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />
         </PieChart>
       </ResponsiveContainer>
@@ -217,7 +247,7 @@ function DynamicChart({ chart }: { chart: VisualChart }) {
           <PolarGrid opacity={0.25} />
           <PolarAngleAxis dataKey={nameKey} tick={{ fontSize: 10 }} />
           <PolarRadiusAxis tick={{ fontSize: 9 }} />
-          <RechartsTooltip contentStyle={tooltipStyle} />
+          <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted) / 0.5)" }} />
           {valueKeys.map((k, i) => (
             <Radar
               key={k}
@@ -240,10 +270,10 @@ function DynamicChart({ chart }: { chart: VisualChart }) {
       <ResponsiveContainer width="100%" height="100%">
         <ScatterChart>
           <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-          <XAxis dataKey="x" type="number" name={nameKey} tick={{ fontSize: 11 }} />
-          <YAxis dataKey="y" type="number" tick={{ fontSize: 11 }} width={35} />
+          <XAxis dataKey="x" type="number" name={nameKey} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} tickMargin={6} />
+          <YAxis dataKey="y" type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} tickMargin={6} width={44} />
           <ZAxis range={[60, 120]} />
-          <RechartsTooltip contentStyle={tooltipStyle} cursor={{ strokeDasharray: "3 3" }} />
+          <RechartsTooltip content={<ChartTooltip />} cursor={{ stroke: "hsl(var(--muted-foreground) / 0.35)", strokeDasharray: "4 4" }} />
           {valueKeys.map((k, i) => (
             <Scatter
               key={k}
@@ -267,9 +297,9 @@ function DynamicChart({ chart }: { chart: VisualChart }) {
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={chart.data}>
           <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-          <XAxis dataKey={nameKey} tick={{ fontSize: 11 }} />
-          <YAxis tick={{ fontSize: 11 }} width={35} />
-          <RechartsTooltip contentStyle={tooltipStyle} />
+          <XAxis dataKey={nameKey} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} tickMargin={6} />
+          <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} tickMargin={6} width={44} />
+          <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted) / 0.5)" }} />
           {valueKeys.map((k, i) => (
             <Line
               key={k}
@@ -277,7 +307,8 @@ function DynamicChart({ chart }: { chart: VisualChart }) {
               dataKey={k}
               stroke={PALETTE[i % PALETTE.length]}
               strokeWidth={2.5}
-              dot={{ r: 3 }}
+              dot={{ r: 2.5, strokeWidth: 0 }}
+              activeDot={{ r: 4 }}
             />
           ))}
           {valueKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />}
@@ -290,19 +321,29 @@ function DynamicChart({ chart }: { chart: VisualChart }) {
   if (type === "area") {
     return (
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={chart.data}>
-          <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-          <XAxis dataKey={nameKey} tick={{ fontSize: 11 }} />
-          <YAxis tick={{ fontSize: 11 }} width={35} />
-          <RechartsTooltip contentStyle={tooltipStyle} />
+        <AreaChart data={chart.data} margin={{ top: 8 }}>
+          <defs>
+            {valueKeys.map((k, i) => (
+              <linearGradient key={k} id={`${gid}-ag-${i}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={PALETTE[i % PALETTE.length]} stopOpacity={0.35} />
+                <stop offset="100%" stopColor={PALETTE[i % PALETTE.length]} stopOpacity={0.02} />
+              </linearGradient>
+            ))}
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+          <XAxis dataKey={nameKey} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} tickMargin={6} />
+          <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} tickMargin={6} width={44} />
+          <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted) / 0.5)" }} />
           {valueKeys.map((k, i) => (
             <Area
               key={k}
               type="monotone"
               dataKey={k}
               stroke={PALETTE[i % PALETTE.length]}
-              fill={PALETTE[i % PALETTE.length]}
-              fillOpacity={0.2}
+              strokeWidth={2.25}
+              dot={false}
+              activeDot={{ r: 3.5 }}
+              fill={`url(#${gid}-ag-${i})`}
             />
           ))}
           {valueKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />}
@@ -314,13 +355,21 @@ function DynamicChart({ chart }: { chart: VisualChart }) {
   /* ---- Bar (default fallback for any unknown type) ---- */
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={chart.data}>
-        <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-        <XAxis dataKey={nameKey} tick={{ fontSize: 11 }} />
-        <YAxis tick={{ fontSize: 11 }} width={35} />
-        <RechartsTooltip contentStyle={tooltipStyle} />
+      <BarChart data={chart.data} margin={{ top: 8 }}>
+        <defs>
+          {valueKeys.map((k, i) => (
+            <linearGradient key={k} id={`${gid}-bg-${i}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={PALETTE[i % PALETTE.length]} stopOpacity={0.95} />
+              <stop offset="100%" stopColor={PALETTE[i % PALETTE.length]} stopOpacity={0.55} />
+            </linearGradient>
+          ))}
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+        <XAxis dataKey={nameKey} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} tickMargin={6} />
+        <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} tickMargin={6} width={44} />
+        <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted) / 0.5)" }} />
         {valueKeys.map((k, i) => (
-          <Bar key={k} dataKey={k} fill={PALETTE[i % PALETTE.length]} radius={[4, 4, 0, 0]} />
+          <Bar key={k} dataKey={k} fill={`url(#${gid}-bg-${i})`} radius={[7, 7, 0, 0]} maxBarSize={56} />
         ))}
         {valueKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />}
       </BarChart>
