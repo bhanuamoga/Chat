@@ -6,6 +6,8 @@ import {
   Clock,
   KeyRound,
   Loader2,
+  MoreHorizontal,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -27,42 +29,69 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { MobileMenuDrawer } from "@/components/nav-rail";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
+import { MobileMenuDrawer } from "@/components/nav-rail";
+import { PROVIDER_LOGOS } from "@/lib/provider-logos";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import type { AiApisClientConfig, AiApiProviderId, UserRow } from "@/lib/types";
+import type { AiApisClientConfig, AiApiEntryClient, AiApiProviderId, UserRow } from "@/lib/types";
 
-/* Provider accents — static class strings so Tailwind always emits them */
+/* Provider accents + real brand logos (inline data URIs — no CDN dependency) */
 const PROVIDER_META: Record<
   AiApiProviderId,
-  { label: string; short: string; hint: string; chip: string; dot: string }
+  { label: string; short: string; hint: string; dot: string; logo: string }
 > = {
   gemini: {
     label: "Google Gemini",
     short: "Gemini",
     hint: "Create a key free at aistudio.google.com",
-    chip: "bg-sky-500/15 text-sky-500",
     dot: "bg-sky-500",
+    logo: PROVIDER_LOGOS.gemini,
   },
   openai: {
     label: "OpenAI",
     short: "OpenAI",
     hint: "Create a key at platform.openai.com",
-    chip: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-300",
-    dot: "bg-zinc-500",
+    dot: "bg-zinc-700",
+    logo: PROVIDER_LOGOS.openai,
   },
   openrouter: {
     label: "OpenRouter",
     short: "OpenRouter",
     hint: "Create a key at openrouter.ai — one key, hundreds of models",
-    chip: "bg-violet-500/15 text-violet-500",
-    dot: "bg-violet-500",
+    dot: "bg-indigo-500",
+    logo: PROVIDER_LOGOS.openrouter,
   },
 };
 
+const PROVIDER_ORDER: AiApiProviderId[] = ["gemini", "openai", "openrouter"];
+
 type RateDraft = { mode: "5" | "10" | "custom" | "unlimited"; custom: number | null };
+
+/* Small white tile so dark logos (OpenAI knot) stay visible in dark mode */
+function ProviderLogo({ provider, className }: { provider: AiApiProviderId; className?: string }) {
+  return (
+    <span
+      className={cn(
+        "flex items-center justify-center rounded-lg border border-border/60 bg-white shadow-2xs",
+        className
+      )}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={PROVIDER_META[provider].logo} alt="" className="size-[60%] object-contain" />
+    </span>
+  );
+}
 
 export function AiApisClient({ me }: { me: UserRow }) {
   const [config, setConfig] = useState<AiApisClientConfig | null>(null);
@@ -72,8 +101,11 @@ export function AiApisClient({ me }: { me: UserRow }) {
   const [busyEntry, setBusyEntry] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [addProvider, setAddProvider] = useState<AiApiProviderId>("gemini");
+  const [editEntry, setEditEntry] = useState<AiApiEntryClient | null>(null);
 
-  const load = async () => {
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch("/api/natural/apis");
       if (res.ok) {
@@ -103,6 +135,9 @@ export function AiApisClient({ me }: { me: UserRow }) {
     };
   }, [config]);
 
+  const effectiveDefaultId = (cfg: AiApisClientConfig | null) =>
+    cfg?.defaultEntryId || cfg?.entries[0]?.id || null;
+
   const saveRateLimit = async () => {
     if (rateDraft.mode === "custom" && (!rateDraft.custom || rateDraft.custom < 1)) {
       toast.error("Enter a custom daily limit (1 or more)");
@@ -123,7 +158,8 @@ export function AiApisClient({ me }: { me: UserRow }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Save failed");
       setConfig(data);
-      toast.success("Daily limit updated");
+      setRateDraft({ mode: data.rateLimit.mode, custom: data.rateLimit.custom });
+      toast.success("Daily limit updated & applied immediately");
     } catch (err: any) {
       toast.error(err?.message || "Could not save daily limit");
     } finally {
@@ -150,7 +186,7 @@ export function AiApisClient({ me }: { me: UserRow }) {
     }
   };
 
-  const deleteEntry = async (id: string, name: string) => {
+  const deleteEntry = async (id: string) => {
     setBusyEntry(id);
     try {
       const res = await fetch(`/api/natural/apis?id=${encodeURIComponent(id)}`, {
@@ -164,7 +200,19 @@ export function AiApisClient({ me }: { me: UserRow }) {
       toast.error(err?.message || "Could not remove API key");
     } finally {
       setBusyEntry(null);
+      setConfirmDelete(null);
     }
+  };
+
+  const openAddFor = (p: AiApiProviderId) => {
+    setEditEntry(null);
+    setAddProvider(p);
+    setShowAdd(true);
+  };
+
+  const openEdit = (e: AiApiEntryClient) => {
+    setShowAdd(false);
+    setEditEntry(e);
   };
 
   const noKeys = config !== null && config.entries.length === 0;
@@ -189,7 +237,7 @@ export function AiApisClient({ me }: { me: UserRow }) {
         </div>
         <Button
           size="sm"
-          onClick={() => setShowAdd(true)}
+          onClick={() => openAddFor("gemini")}
           className="h-8 gap-1.5 text-xs rounded-lg shrink-0 shadow-xs"
         >
           <Plus className="size-3.5" />
@@ -200,10 +248,7 @@ export function AiApisClient({ me }: { me: UserRow }) {
       <div className="nice-scroll flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto w-full px-3 sm:px-5 py-5 space-y-5">
           {loading ? (
-            <div className="flex items-center justify-center gap-2 py-20 text-muted-foreground">
-              <Loader2 className="size-5 animate-spin text-primary" />
-              <span className="text-sm">Loading…</span>
-            </div>
+            <LoadingSkeletons />
           ) : (
             <>
               {/* ============ Overview stats ============ */}
@@ -227,7 +272,7 @@ export function AiApisClient({ me }: { me: UserRow }) {
                     Your daily prompt limit
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    Applies to Natural Chat and resets every midnight (IST).
+                    Applies immediately to Natural Chat and resets every midnight (IST).
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -240,11 +285,9 @@ export function AiApisClient({ me }: { me: UserRow }) {
                     <TabsList className="grid h-10 w-full grid-cols-4">
                       <TabsTrigger value="5" className="text-xs gap-1.5">
                         5 / day
-                        <span className="hidden sm:inline text-[9px] font-normal text-muted-foreground">default</span>
                       </TabsTrigger>
-                      <TabsTrigger value="10" className="text-xs gap-1.5">
+                      <TabsTrigger value="10" className="text-xs">
                         10 / day
-                        <span className="hidden sm:inline text-[9px] font-normal text-muted-foreground">room</span>
                       </TabsTrigger>
                       <TabsTrigger value="custom" className="text-xs">Custom</TabsTrigger>
                       <TabsTrigger value="unlimited" className="text-xs">Unlimited</TabsTrigger>
@@ -293,189 +336,134 @@ export function AiApisClient({ me }: { me: UserRow }) {
                 </CardContent>
               </Card>
 
-              {/* ============ Connections ============ */}
-              <div className="space-y-2.5">
-                <div className="flex items-end justify-between px-1">
-                  <div>
-                    <h2 className="text-sm font-semibold">Connected API keys</h2>
-                    <p className="text-[11px] text-muted-foreground">
-                      Keys power your Natural Chats only. Set one as default.
-                    </p>
-                  </div>
-                </div>
-
-                {noKeys ? (
-                  /* Empty state — this is the required first step now */
-                  <button
-                    type="button"
-                    onClick={() => setShowAdd(true)}
-                    className="group w-full rounded-2xl border-2 border-dashed border-border/70 px-6 py-10 text-center transition-all hover:border-primary/50 hover:bg-primary/5"
-                  >
-                    <span className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary transition-transform group-hover:scale-105">
-                      <KeyRound className="size-6" />
-                    </span>
-                    <p className="text-sm font-semibold text-foreground">No API keys yet</p>
-                    <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground leading-relaxed">
-                      Connect a Gemini, OpenAI or OpenRouter key to unlock Natural Chat —
-                      one key can power multiple models.
-                    </p>
-                    <span className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground shadow-sm">
-                      <Plus className="size-3.5" />
-                      Add your first key
-                    </span>
-                  </button>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {(config?.entries || []).map((e) => {
-                      const meta = PROVIDER_META[e.provider];
-                      const isDefault =
-                        config?.defaultEntryId === e.id ||
-                        (!config?.defaultEntryId && config!.entries[0]?.id === e.id);
-                      return (
-                        <div
-                          key={e.id}
-                          className={cn(
-                            "rounded-2xl border p-3.5 transition-all",
-                            isDefault
-                              ? "border-primary/40 bg-primary/5 shadow-xs"
-                              : "border-border/70 bg-muted/30 hover:border-border"
-                          )}
-                        >
-                          {/* head */}
-                          <div className="flex items-center gap-2.5">
-                            <span
-                              className={cn(
-                                "flex size-9 shrink-0 items-center justify-center rounded-xl font-bold text-[11px]",
-                                meta.chip
-                              )}
-                            >
-                              {meta.short.slice(0, 2)}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5">
-                                <p className="truncate text-[13px] font-semibold text-foreground">
-                                  {e.name}
-                                </p>
-                                {isDefault && (
-                                  <span className="shrink-0 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-500">
-                                    Default
-                                  </span>
-                                )}
-                              </div>
-                              <p className="truncate text-[10px] text-muted-foreground">
-                                {meta.label} · <span className="font-mono">{e.maskedKey}</span>
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* model chips */}
-                          <div className="mt-2.5 flex flex-wrap gap-1" title={e.models.join(", ")}>
-                            {e.models.slice(0, 3).map((m) => (
-                              <span
-                                key={m}
-                                className="truncate max-w-[140px] rounded-md bg-background/80 border border-border/60 px-1.5 py-0.5 font-mono text-[9.5px] text-muted-foreground"
-                              >
-                                {m}
-                              </span>
-                            ))}
-                            {e.models.length > 3 && (
-                              <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[9.5px] font-semibold text-primary">
-                                +{e.models.length - 3} more
-                              </span>
-                            )}
-                          </div>
-
-                          {/* actions */}
-                          <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/50 pt-2.5">
-                            {isDefault ? (
-                              <span className="text-[10px] font-medium text-emerald-500">
-                                Used by Natural Chat
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => setDefaultEntry(e.id)}
-                                disabled={busyEntry === e.id}
-                                className="text-[10px] font-semibold text-primary hover:underline disabled:opacity-60"
-                              >
-                                {busyEntry === e.id ? "Setting…" : "Make default"}
-                              </button>
-                            )}
-                            {confirmDelete === e.id ? (
-                              <div className="flex items-center gap-1.5 animate-in fade-in duration-150">
-                                <span className="text-[10px] font-medium text-destructive">
-                                  Remove?
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setConfirmDelete(null);
-                                    deleteEntry(e.id, e.name);
-                                  }}
-                                  disabled={busyEntry === e.id}
-                                  className="text-[10px] font-bold text-destructive hover:underline disabled:opacity-60"
-                                >
-                                  {busyEntry === e.id ? "Removing…" : "Yes"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmDelete(null)}
-                                  className="text-[10px] font-medium text-muted-foreground hover:underline"
-                                >
-                                  No
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDelete(e.id)}
-                                disabled={busyEntry === e.id}
-                                className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                                title="Remove this API key"
-                              >
-                                <Trash2 className="size-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+              {/* ============ The 3 provider cards ============ */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {PROVIDER_ORDER.map((p) => (
+                  <ProviderCard
+                    key={p}
+                    provider={p}
+                    entries={(config?.entries || []).filter((e) => e.provider === p)}
+                    defaultId={effectiveDefaultId(config)}
+                    busyEntry={busyEntry}
+                    confirmDelete={confirmDelete}
+                    onAdd={() => openAddFor(p)}
+                    onEdit={openEdit}
+                    onSetDefault={setDefaultEntry}
+                    onAskDelete={(id) => setConfirmDelete(id)}
+                    onCancelDelete={() => setConfirmDelete(null)}
+                    onConfirmDelete={deleteEntry}
+                  />
+                ))}
               </div>
 
+              {noKeys && (
+                <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-[11.5px] font-medium text-amber-600 dark:text-amber-400">
+                  No API keys yet — connect at least one above to unlock Natural Chat. One
+                  key can power multiple selected models.
+                </p>
+              )}
+
               <p className="text-[11px] text-muted-foreground leading-relaxed px-1 pb-4">
-                Keys are validated against the provider when you add them and are only
-                ever sent to that provider, directly from the server — never to other
-                users or third parties.
+                Keys are validated against the provider when you add or edit them and are
+                only ever sent to that provider, directly from the server — never to
+                other users or third parties.
               </p>
             </>
           )}
         </div>
       </div>
 
-      <AddApiDialog open={showAdd} onOpenChange={setShowAdd} onSaved={(cfg) => setConfig(cfg)} />
+      {/* Add dialog */}
+      {showAdd && (
+        <ApiKeyDialog
+          key={`add-${addProvider}`}
+          mode="add"
+          lockedProvider={addProvider}
+          onClose={() => setShowAdd(false)}
+          onSaved={(cfg) => {
+            setConfig(cfg);
+            setShowAdd(false);
+            toast.success("API key verified & connected — pick it in the chat composer");
+          }}
+        />
+      )}
+
+      {/* Edit dialog */}
+      {editEntry && (
+        <ApiKeyDialog
+          key={`edit-${editEntry.id}`}
+          mode="edit"
+          entry={editEntry}
+          lockedProvider={editEntry.provider}
+          onClose={() => setEditEntry(null)}
+          onSaved={(cfg) => {
+            setConfig(cfg);
+            setEditEntry(null);
+            toast.success("Connection updated in place");
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ---------------- loading skeletons (no spinners) ---------------- */
+
+function LoadingSkeletons() {
+  return (
+    <div className="space-y-5 animate-in fade-in duration-200">
+      <div className="grid grid-cols-3 gap-2">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="rounded-xl border border-border/70 px-3 py-2.5 space-y-2">
+            <Skeleton className="h-2.5 w-16" />
+            <Skeleton className="h-4 w-10" />
+          </div>
+        ))}
+      </div>
+      <Card className="border-border/70 shadow-xs">
+        <CardHeader className="pb-3 space-y-2">
+          <Skeleton className="h-4 w-44" />
+          <Skeleton className="h-3 w-64" />
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Skeleton className="h-10 w-full rounded-lg" />
+          <div className="flex justify-end">
+            <Skeleton className="h-8 w-20 rounded-lg" />
+          </div>
+        </CardContent>
+      </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        {[0, 1, 2].map((i) => (
+          <Card key={i} className="border-border/70 shadow-xs">
+            <CardHeader className="pb-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Skeleton className="size-8 rounded-lg" />
+                <Skeleton className="h-3.5 w-20" />
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Skeleton className="h-9 w-full rounded-lg" />
+              <Skeleton className="h-9 w-full rounded-lg" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
 
 /* ---------------- stat chip ---------------- */
 
-function StatChip({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent?: string;
-}) {
+function StatChip({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div className="rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
       </p>
-      <p className="mt-0.5 flex items-center gap-1.5 truncate text-sm font-bold text-foreground" title={value}>
+      <p
+        className="mt-0.5 flex items-center gap-1.5 truncate text-sm font-bold text-foreground"
+        title={value}
+      >
         {accent && <span className={cn("size-2 rounded-full shrink-0", accent)} />}
         <span className="truncate">{value}</span>
       </p>
@@ -483,19 +471,232 @@ function StatChip({
   );
 }
 
-/* ---------------- add-key dialog ---------------- */
+/* ---------------- one provider card (Gemini / OpenAI / OpenRouter) ---------------- */
 
-function AddApiDialog({
-  open,
-  onOpenChange,
+function ProviderCard({
+  provider,
+  entries,
+  defaultId,
+  busyEntry,
+  confirmDelete,
+  onAdd,
+  onEdit,
+  onSetDefault,
+  onAskDelete,
+  onCancelDelete,
+  onConfirmDelete,
+}: {
+  provider: AiApiProviderId;
+  entries: AiApiEntryClient[];
+  defaultId: string | null;
+  busyEntry: string | null;
+  confirmDelete: string | null;
+  onAdd: () => void;
+  onEdit: (e: AiApiEntryClient) => void;
+  onSetDefault: (id: string) => void;
+  onAskDelete: (id: string) => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: (id: string) => void;
+}) {
+  const meta = PROVIDER_META[provider];
+  return (
+    <Card className="border-border/70 shadow-xs flex flex-col">
+      <CardHeader className="pb-2.5 space-y-0">
+        <div className="flex items-center gap-2">
+          <ProviderLogo provider={provider} className="size-8" />
+          <div className="min-w-0 flex-1">
+            <CardTitle className="text-[13px] truncate">{meta.short}</CardTitle>
+            <p className="text-[10px] text-muted-foreground truncate">
+              {entries.length ? `${entries.reduce((n, e) => n + e.models.length, 0)} models` : "Not connected"}
+            </p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="flex-1 space-y-2 pb-3">
+        {entries.map((e) => {
+          const isDefault = defaultId === e.id;
+          const busy = busyEntry === e.id;
+          return (
+            <div
+              key={e.id}
+              className={cn(
+                "rounded-xl border p-2.5 transition-colors",
+                isDefault ? "border-primary/40 bg-primary/5" : "border-border/60 bg-muted/30"
+              )}
+            >
+              {/* name + actions row */}
+              <div className="flex items-center gap-1.5">
+                <p className="min-w-0 truncate text-[12px] font-semibold text-foreground flex-1">
+                  {e.name}
+                </p>
+                {isDefault && (
+                  <span className="shrink-0 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wide text-emerald-500">
+                    Default
+                  </span>
+                )}
+
+                {/* models · three-dot dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                      aria-label={`Models and actions for ${e.name}`}
+                    >
+                      <MoreHorizontal className="size-3.5" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    sideOffset={6}
+                    className="nice-scroll max-h-[260px] w-[250px] overflow-y-auto"
+                  >
+                    <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Models ({e.models.length})
+                    </DropdownMenuLabel>
+                    {e.models.map((m) => (
+                      <DropdownMenuItem
+                        key={m}
+                        className="font-mono text-[11px] h-6.5"
+                        onSelect={(ev) => ev.preventDefault()}
+                      >
+                        <span className="truncate">{m}</span>
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => onEdit(e)} className="gap-2 text-xs">
+                      <Pencil className="size-3.5" />
+                      Edit connection…
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* edit */}
+                <button
+                  type="button"
+                  onClick={() => onEdit(e)}
+                  className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  title="Edit this connection"
+                >
+                  <Pencil className="size-3.5" />
+                </button>
+
+                {/* delete with inline confirm */}
+                {confirmDelete === e.id ? (
+                  <div className="flex items-center gap-1 animate-in fade-in duration-150">
+                    <button
+                      type="button"
+                      onClick={() => onConfirmDelete(e.id)}
+                      disabled={busy}
+                      className="text-[9px] font-bold text-destructive hover:underline disabled:opacity-60"
+                    >
+                      {busy ? "…" : "Yes"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onCancelDelete}
+                      className="text-[9px] font-medium text-muted-foreground hover:underline"
+                    >
+                      No
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onAskDelete(e.id)}
+                    disabled={busy}
+                    className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                    title="Remove"
+                  >
+                    {busy ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="size-3.5" />
+                    )}
+                  </button>
+                )}
+              </div>
+
+              {/* masked key */}
+              <p className="mt-0.5 truncate font-mono text-[9.5px] text-muted-foreground">
+                {e.maskedKey}
+              </p>
+
+              {/* model chips + set default */}
+              <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                {e.models.slice(0, 2).map((m) => (
+                  <span
+                    key={m}
+                    className="max-w-[120px] truncate rounded-md border border-border/60 bg-background/80 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground"
+                    title={m}
+                  >
+                    {m}
+                  </span>
+                ))}
+                {e.models.length > 2 && (
+                  <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">
+                    +{e.models.length - 2}
+                  </span>
+                )}
+                {!isDefault && (
+                  <button
+                    type="button"
+                    onClick={() => onSetDefault(e.id)}
+                    disabled={busy}
+                    className="ml-auto text-[9px] font-semibold text-primary hover:underline disabled:opacity-60"
+                  >
+                    Set default
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {entries.length === 0 ? (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="group flex w-full flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border/70 px-3 py-5 text-center transition-all hover:border-primary/50 hover:bg-primary/5"
+          >
+            <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary transition-transform group-hover:scale-105">
+              <Plus className="size-4" />
+            </span>
+            <span className="text-[11px] font-semibold text-foreground">Connect {meta.short}</span>
+            <span className="text-[9.5px] text-muted-foreground leading-snug">{meta.hint}</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border/70 px-2 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+          >
+            <Plus className="size-3" />
+            Add another {meta.short} key
+          </button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ---------------- add / edit key dialog ---------------- */
+
+function ApiKeyDialog({
+  mode,
+  entry,
+  lockedProvider,
+  onClose,
   onSaved,
 }: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
+  mode: "add" | "edit";
+  entry?: AiApiEntryClient;
+  lockedProvider: AiApiProviderId;
+  onClose: () => void;
   onSaved: (cfg: AiApisClientConfig) => void;
 }) {
-  const [provider, setProvider] = useState<AiApiProviderId>("gemini");
-  const [name, setName] = useState("");
+  const [provider, setProvider] = useState<AiApiProviderId>(lockedProvider);
+  const [name, setName] = useState(entry?.name || "");
   const [apiKey, setApiKey] = useState("");
   const [fetching, setFetching] = useState(false);
   const [fetchedModels, setFetchedModels] = useState<string[] | null>(null);
@@ -504,17 +705,39 @@ function AddApiDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reset = () => {
-    setProvider("gemini");
-    setName("");
-    setApiKey("");
-    setFetching(false);
-    setFetchedModels(null);
-    setSelected(new Set());
-    setModelSearch("");
-    setSaving(false);
-    setError(null);
-  };
+  /* Edit mode: immediately pull the live catalog using the stored key (no paste needed) */
+  useEffect(() => {
+    if (mode !== "edit" || !entry) return;
+    let cancelled = false;
+    (async () => {
+      setFetching(true);
+      try {
+        const res = await fetch("/api/natural/apis", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "fetchEntryModels", entryId: entry.id }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not fetch models");
+        if (cancelled) return;
+        setFetchedModels(data.models);
+        const live = new Set(data.models as string[]);
+        /* keep the user's previous selection as far as it's still live */
+        setSelected(new Set(entry.models.filter((m) => live.has(m))));
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(err?.message || "Stored key failed re-validation");
+          setFetchedModels(entry.models); /* fall back: still let them trim locally */
+          setSelected(new Set(entry.models));
+        }
+      } finally {
+        if (!cancelled) setFetching(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, entry]);
 
   const filteredModels = useMemo(() => {
     const q = modelSearch.trim().toLowerCase();
@@ -525,7 +748,7 @@ function AddApiDialog({
 
   const fetchModels = async () => {
     if (!apiKey.trim()) {
-      setError("Paste your API key first");
+      setError(mode === "edit" ? "Paste a new key to re-validate, or just edit name/models" : "Paste your API key first");
       return;
     }
     setFetching(true);
@@ -541,7 +764,7 @@ function AddApiDialog({
       setFetchedModels(data.models);
       setSelected(new Set((data.models as string[]).slice(0, Math.min(3, data.models.length))));
     } catch (err: any) {
-      setFetchedModels(null);
+      if (mode === "add") setFetchedModels(null);
       setError(err?.message || "Invalid API key — could not fetch models");
     } finally {
       setFetching(false);
@@ -569,24 +792,32 @@ function AddApiDialog({
     setSaving(true);
     setError(null);
     try {
-      /* Server re-validates the key with the provider before saving */
       const res = await fetch("/api/natural/apis", {
-        method: "POST",
+        method: mode === "edit" ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "save",
-          name: name.trim(),
-          provider,
-          apiKey: apiKey.trim(),
-          models: Array.from(selected),
-        }),
+        /* Server re-validates the effective key with the provider before saving */
+        body: JSON.stringify(
+          mode === "edit"
+            ? {
+                entryUpdate: {
+                  id: entry!.id,
+                  name: name.trim(),
+                  apiKey: apiKey.trim() || null,
+                  models: Array.from(selected),
+                },
+              }
+            : {
+                action: "save",
+                name: name.trim(),
+                provider,
+                apiKey: apiKey.trim(),
+                models: Array.from(selected),
+              }
+        ),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Save failed");
       onSaved(data);
-      onOpenChange(false);
-      reset();
-      toast.success("API key verified & connected — pick it in the chat composer");
     } catch (err: any) {
       setError(err?.message || "Could not save API key");
     } finally {
@@ -597,20 +828,12 @@ function AddApiDialog({
   const meta = PROVIDER_META[provider];
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        onOpenChange(v);
-        if (!v) reset();
-      }}
-    >
+    <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
-            <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <KeyRound className="size-3.5" />
-            </span>
-            Add an AI API key
+            <ProviderLogo provider={lockedProvider} className="size-7" />
+            {mode === "edit" ? `Edit · ${meta.short}` : `Add a ${meta.short} key`}
           </DialogTitle>
           <DialogDescription className="text-xs">
             Verified against the provider before saving. Never shared, never logged.
@@ -618,7 +841,7 @@ function AddApiDialog({
         </DialogHeader>
 
         <div className="space-y-3.5">
-          {/* 1. Provider */}
+          {/* 1. Provider — brand logos for instant recognition; locked in edit mode */}
           <div>
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               1 · Provider
@@ -626,16 +849,25 @@ function AddApiDialog({
             <Tabs
               value={provider}
               onValueChange={(v) => {
+                if (mode === "edit") return;
                 setProvider(v as AiApiProviderId);
                 setFetchedModels(null);
                 setSelected(new Set());
                 setError(null);
               }}
             >
-              <TabsList className="grid h-10 w-full grid-cols-3">
-                {(Object.keys(PROVIDER_META) as AiApiProviderId[]).map((p) => (
-                  <TabsTrigger key={p} value={p} className="gap-1.5 text-xs font-semibold">
-                    <span className={cn("size-1.5 rounded-full", PROVIDER_META[p].dot)} />
+              <TabsList className="grid h-11 w-full grid-cols-3">
+                {PROVIDER_ORDER.map((p) => (
+                  <TabsTrigger
+                    key={p}
+                    value={p}
+                    disabled={mode === "edit" && p !== lockedProvider}
+                    className="gap-1.5 text-xs font-semibold"
+                  >
+                    <span className="flex size-4 items-center justify-center rounded-[4px] bg-white p-px shadow-2xs">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={PROVIDER_META[p].logo} alt="" className="size-full object-contain" />
+                    </span>
                     {PROVIDER_META[p].short}
                   </TabsTrigger>
                 ))}
@@ -661,7 +893,12 @@ function AddApiDialog({
           {/* 3. Key + validate */}
           <div>
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              3 · API key
+              3 · API key{" "}
+              {mode === "edit" && (
+                <span className="ml-1 font-normal normal-case text-muted-foreground/70">
+                  (leave blank to keep {entry?.maskedKey})
+                </span>
+              )}
             </p>
             <div className="flex gap-2">
               <Input
@@ -669,9 +906,9 @@ function AddApiDialog({
                 value={apiKey}
                 onChange={(e) => {
                   setApiKey(e.target.value);
-                  setFetchedModels(null);
+                  if (mode === "add") setFetchedModels(null);
                 }}
-                placeholder="Paste your key…"
+                placeholder={mode === "edit" ? "Paste a new key (optional)…" : "Paste your key…"}
                 className="h-9 text-xs font-mono"
                 autoComplete="off"
               />
@@ -691,62 +928,70 @@ function AddApiDialog({
             </div>
           </div>
 
-          {/* 4. Live model catalog — from the provider's API, never hardcoded. One key, many models. */}
-          {fetchedModels && (
-            <div className="animate-in fade-in duration-200">
-              <div className="mb-1.5 flex items-center justify-between">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  4 · Models ({selected.size} selected)
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelected(new Set(filteredModels))}
-                    className="text-[10px] font-medium text-primary hover:underline"
-                  >
-                    Select shown
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelected(new Set())}
-                    className="text-[10px] font-medium text-muted-foreground hover:underline"
-                  >
-                    Clear
-                  </button>
+          {/* 4. Live model catalog — one key can power many selected models */}
+          {fetching && !fetchedModels ? (
+            <div className="space-y-1.5">
+              <Skeleton className="h-8 w-full rounded-lg" />
+              <Skeleton className="h-7 w-full rounded-lg" />
+              <Skeleton className="h-7 w-2/3 rounded-lg" />
+            </div>
+          ) : (
+            fetchedModels && (
+              <div className="animate-in fade-in duration-200">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    4 · Models ({selected.size} selected)
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelected(new Set(filteredModels))}
+                      className="text-[10px] font-medium text-primary hover:underline"
+                    >
+                      Select shown
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelected(new Set())}
+                      className="text-[10px] font-medium text-muted-foreground hover:underline"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <div className="relative mb-1.5">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={modelSearch}
+                    onChange={(e) => setModelSearch(e.target.value)}
+                    placeholder="Filter models…"
+                    className="h-8 pl-8 text-xs"
+                  />
+                </div>
+                <div className="nice-scroll max-h-44 overflow-y-auto rounded-xl border border-border/70">
+                  {filteredModels.length === 0 ? (
+                    <p className="p-3 text-center text-[11px] text-muted-foreground">
+                      No models match "{modelSearch}"
+                    </p>
+                  ) : (
+                    filteredModels.map((m) => (
+                      <label
+                        key={m}
+                        className="flex cursor-pointer items-center gap-2.5 border-b border-border/40 px-3 py-2 text-xs last:border-0 hover:bg-accent/60 transition-colors"
+                      >
+                        <Checkbox
+                          checked={selected.has(m)}
+                          onCheckedChange={() => toggleModel(m)}
+                          className="size-3.5"
+                          aria-label={`Select ${m}`}
+                        />
+                        <span className="truncate font-mono text-[11px]">{m}</span>
+                      </label>
+                    ))
+                  )}
                 </div>
               </div>
-              <div className="relative mb-1.5">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={modelSearch}
-                  onChange={(e) => setModelSearch(e.target.value)}
-                  placeholder="Filter models…"
-                  className="h-8 pl-8 text-xs"
-                />
-              </div>
-              <div className="nice-scroll max-h-44 overflow-y-auto rounded-xl border border-border/70">
-                {filteredModels.length === 0 ? (
-                  <p className="p-3 text-center text-[11px] text-muted-foreground">
-                    No models match "{modelSearch}"
-                  </p>
-                ) : (
-                  filteredModels.map((m) => (
-                    <label
-                      key={m}
-                      className="flex cursor-pointer items-center gap-2.5 border-b border-border/40 px-3 py-2 text-xs last:border-0 hover:bg-accent/60 transition-colors"
-                    >
-                      <Checkbox
-                        checked={selected.has(m)}
-                        onCheckedChange={() => toggleModel(m)}
-                        className="size-3.5"
-                        aria-label={`Select ${m}`}
-                      />
-                      <span className="truncate font-mono text-[11px]">{m}</span>
-                    </label>
-                  ))
-                )}
-              </div>
-            </div>
+            )
           )}
 
           {error && (
@@ -768,7 +1013,7 @@ function AddApiDialog({
             ) : (
               <>
                 <Check className="size-4" />
-                Verify & save connection
+                {mode === "edit" ? "Verify & update connection" : "Verify & save connection"}
               </>
             )}
           </Button>

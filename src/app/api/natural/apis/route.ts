@@ -67,8 +67,9 @@ export async function GET() {
 
 /**
  * POST /api/natural/apis
- *   action = "fetchModels"  { provider, apiKey }                → { models: string[] } (validates the key against the provider, nothing saved)
- *   action = "save"         { name, provider, apiKey, models[] } → saves entry, returns fresh config
+ *   action = "fetchModels"      { provider, apiKey }                 → { models } — validates a PASTED key, nothing saved
+ *   action = "fetchEntryModels" { entryId }                          → { models } — re-validates a SAVED entry's key (edit flow)
+ *   action = "save"             { name, provider, apiKey, models[] } → saves entry, returns fresh config
  */
 export async function POST(req: NextRequest) {
   const userId = await requireUserId();
@@ -76,6 +77,25 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || "");
+
+  /* --- edit flow: pull the live catalog for an already-saved entry --- */
+  if (action === "fetchEntryModels") {
+    const entryId = String(body.entryId || "");
+    const cfg = await loadConfig(userId);
+    const entry = cfg.entries.find((e) => e.id === entryId);
+    if (!entry) {
+      return NextResponse.json({ error: "API entry not found" }, { status: 404 });
+    }
+    try {
+      const models = await listProviderModels(entry.provider, entry.apiKey);
+      return NextResponse.json({ models, provider: entry.provider });
+    } catch (err: any) {
+      return NextResponse.json(
+        { error: `Key rejected by provider on re-check: ${err?.message || "invalid"}` },
+        { status: 400 }
+      );
+    }
+  }
 
   if (!validProvider(body.provider)) {
     return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
@@ -169,6 +189,8 @@ export async function POST(req: NextRequest) {
  * PATCH /api/natural/apis
  *   { defaultEntryId: string|null }              → set which API Natural Chat uses by default
  *   { rateLimit: { mode, custom? } }             → the user's own daily prompt cap
+ *   { entryUpdate: { id, name, apiKey?, models[] } } → edit an entry in place (blank key keeps the
+ *     stored one); the effective key + chosen models are ALWAYS validated against the provider.
  */
 export async function PATCH(req: NextRequest) {
   const userId = await requireUserId();
@@ -203,6 +225,60 @@ export async function PATCH(req: NextRequest) {
       }
     }
     cfg.rateLimit = { mode: mode as AiApiConfig["rateLimit"]["mode"], custom };
+    changed = true;
+  }
+
+  /* --- edit a saved connection in place --- */
+  if (body.entryUpdate && typeof body.entryUpdate === "object") {
+    const u = body.entryUpdate as Record<string, unknown>;
+    const entry = cfg.entries.find((e) => e.id === String(u.id || ""));
+    if (!entry) {
+      return NextResponse.json({ error: "API entry not found" }, { status: 404 });
+    }
+    const name = String(u.name || "").trim().slice(0, 60);
+    if (!name) {
+      return NextResponse.json({ error: "Please give this API a name" }, { status: 400 });
+    }
+    const models: string[] = Array.isArray(u.models)
+      ? u.models.filter((m): m is string => typeof m === "string" && !!m.trim()).slice(0, 200)
+      : [];
+    if (!models.length) {
+      return NextResponse.json({ error: "Select at least one model" }, { status: 400 });
+    }
+
+    const newKey =
+      typeof u.apiKey === "string" && u.apiKey.trim().length >= 8 ? u.apiKey.trim() : null;
+    const effectiveKey = newKey || entry.apiKey;
+
+    /* ALWAYS validate the effective key + chosen models against the live provider */
+    let liveModels: string[];
+    try {
+      liveModels = await listProviderModels(entry.provider, effectiveKey);
+    } catch (err: any) {
+      return NextResponse.json(
+        {
+          error: `Invalid or expired API key — it was rejected by ${
+            AI_API_PROVIDERS.find((x) => x.id === entry.provider)?.label
+          }: ${err?.message || "validation failed"}`,
+        },
+        { status: 400 }
+      );
+    }
+    const unknown = models.filter((m) => !liveModels.includes(m));
+    if (unknown.length) {
+      return NextResponse.json(
+        {
+          error: `Not available on this key: ${unknown
+            .slice(0, 3)
+            .join(", ")}${unknown.length > 3 ? ` (+${unknown.length - 3} more)` : ""}. Re-fetch models and pick from the live list.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    entry.name = name;
+    entry.models = models;
+    if (newKey) entry.apiKey = newKey;
     changed = true;
   }
 
