@@ -190,7 +190,7 @@ function ChartTooltip({ active, payload, label }: any) {
             <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
               <span
                 className="size-2 shrink-0 rounded-full"
-                style={{ background: entry.stroke || entry.color || entry.payload?.fill || "var(--primary)" }}
+                style={{ background: entry.stroke || entry.color || entry.payload?.fill || "var(--chart-1)" }}
               />
               <span className="truncate">{String(entry.name ?? "")}</span>
             </span>

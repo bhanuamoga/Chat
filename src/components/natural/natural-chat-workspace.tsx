@@ -826,20 +826,13 @@ function ChatViewport({
           </div>
         </div>
       ) : (
-        /* ===== Chat Messages — true ChatGPT style, full width ===== */
-        <div className="w-full">
+        /* ===== Chat Messages — one centered column, same width as composer ===== */
+        <div className="mx-auto w-full max-w-3xl px-3 sm:px-4">
           {messages.map((m) => {
             const isUser = m.role === "user";
             return (
-              <div
-                key={m.id}
-                className={cn(
-                  "w-full"
-                )}
-              >
-                {/* ChatGPT style: small padding, avatar + content inline, no max-width on mobile */}
-                <div className="w-full px-3 sm:px-5 py-4">
-                  <div className="max-w-3xl mx-auto">
+              <div key={m.id} className="py-4">
+                <div>
                     {/* Sender header — avatar & name on one slim line; the message spans the FULL column like the composer */}
                     <div className="flex items-center gap-1.5 mb-1.5">
                       {isUser ? (
@@ -908,15 +901,14 @@ function ChatViewport({
                       )}
                     </div>
                   </div>
-                </div>
               </div>
             );
           })}
 
           {/* THINKING phase — ChatGPT style: quiet line with a live timer, no spinner box */}
           {(generating || streaming) && !streaming?.text && (
-            <div className="w-full px-3 sm:px-5 py-3 animate-in fade-in duration-200">
-              <div className="max-w-3xl mx-auto space-y-1.5">
+            <div className="py-3 animate-in fade-in duration-200">
+              <div className="space-y-1.5">
                 <ThinkingRow startTs={thinkStartTs} />
                 {streaming?.reasoning && (
                   <p className="nice-scroll max-h-40 overflow-y-auto whitespace-pre-wrap border-l-2 border-primary/30 pl-3 text-[13px] italic leading-relaxed text-muted-foreground/85 animate-in fade-in duration-300">
@@ -929,8 +921,8 @@ function ChatViewport({
 
           {/* ANSWER phase — thought collapses to "Thought for N seconds"; answer types line-by-line */}
           {streaming?.text && (
-            <div className="w-full px-3 sm:px-5 py-3 animate-in fade-in duration-200">
-              <div className="max-w-3xl mx-auto space-y-3">
+            <div className="py-3 animate-in fade-in duration-200">
+              <div className="space-y-3">
                 {streaming.reasoning && (
                   <details className="group">
                     <summary className="flex w-fit cursor-pointer select-none list-none items-center gap-1.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
