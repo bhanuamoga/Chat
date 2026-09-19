@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   ArrowUp,
   Loader2,
-  Sparkles,
   Plus,
   Trash2,
   Coins,
@@ -35,6 +34,7 @@ import { UserAvatar } from "@/components/chat-bits";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { VisualDataRenderer, SourceCards } from "./visual-data-renderer";
 import { MobileMenuDrawer } from "@/components/nav-rail";
+import { JarvisLogo } from "@/components/jarvis-logo";
 import { toast } from "sonner";
 import { cn, formatChatListTime } from "@/lib/utils";
 import type {
@@ -603,10 +603,10 @@ function SidebarHeader({ me, onNewChat }: { me: UserRow; onNewChat: () => void }
         <MobileMenuDrawer user={me} />
         <div className="flex items-center gap-2">
           <span className="flex size-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
-            <Sparkles className="size-4" />
+            <JarvisLogo className="size-4" />
           </span>
           <div>
-            <h2 className="text-sm font-semibold leading-tight">Natural Chat</h2>
+            <h2 className="text-sm font-semibold leading-tight">Jarvis</h2>
           </div>
         </div>
       </div>
@@ -671,7 +671,7 @@ function SidebarChatList({
         </div>
       ) : chats.length === 0 ? (
         <div className="p-6 text-center text-muted-foreground space-y-2">
-          <Sparkles className="size-8 mx-auto text-muted-foreground/60" />
+          <JarvisLogo className="size-8 mx-auto text-muted-foreground/60" />
           <p className="text-xs">No AI conversations yet.</p>
           <Button variant="outline" size="sm" onClick={onNewChat} className="text-xs h-7">
             Start First Chat
@@ -732,8 +732,8 @@ function SidebarChatList({
                   <button
                     type="button"
                     onClick={(e) => onAskDelete(c.id, e)}
-                    className="shrink-0 rounded-md p-1.5 text-muted-foreground/50 transition-all hover:bg-destructive/10 hover:text-destructive md:opacity-0 md:group-hover:opacity-100"
-                    title="Delete conversation"
+                    aria-label="Delete conversation"
+                    className="shrink-0 rounded-md p-1.5 text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive"
                   >
                     <Trash2 className="size-3.5" />
                   </button>
@@ -799,7 +799,7 @@ function ChatViewport({
         /* ===== Welcome / Zero State ===== */
         <div className="flex flex-col items-center justify-center min-h-[60vh] max-w-2xl mx-auto text-center px-4 space-y-6">
           <div className="size-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-sm">
-            <Sparkles className="size-7" />
+            <JarvisLogo className="size-7" />
           </div>
 
           <div className="space-y-1.5">
@@ -853,7 +853,7 @@ function ChatViewport({
                         />
                       ) : (
                         <div className="size-6 sm:size-7 rounded-lg bg-primary/15 text-primary flex items-center justify-center shadow-xs">
-                          <Sparkles className="size-3 sm:size-3.5" />
+                          <JarvisLogo className="size-3 sm:size-3.5" />
                         </div>
                       )}
                     </div>
@@ -937,7 +937,7 @@ function ChatViewport({
                 {streaming.reasoning && (
                   <details className="group">
                     <summary className="flex w-fit cursor-pointer select-none list-none items-center gap-1.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
-                      <Sparkles className="size-3.5 text-primary" />
+                      <JarvisLogo className="size-3.5 text-primary" />
                       <span>Thought for {streaming.thoughtSecs || 1} seconds</span>
                       <ChevronDown className="size-3.5 transition-transform duration-200 group-open:rotate-180" />
                     </summary>
@@ -949,7 +949,7 @@ function ChatViewport({
 
                 <div className="flex gap-2.5 sm:gap-3">
                   <div className="size-6 sm:size-7 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0">
-                    <Sparkles className="size-3 sm:size-3.5" />
+                    <JarvisLogo className="size-3 sm:size-3.5" />
                   </div>
                   <div className="min-w-0 flex-1 text-foreground">
                     <MarkdownRenderer content={stripVisualJson(streaming.text)} />
@@ -1106,7 +1106,7 @@ function ThinkingRow({ startTs }: { startTs: number | null }) {
   }, [startTs]);
   return (
     <div className="flex items-center gap-2 text-[13.5px] font-medium text-muted-foreground">
-      <Sparkles className="size-3.5 animate-pulse text-primary" />
+      <JarvisLogo className="size-3.5 animate-pulse text-primary" />
       <span>
         Thinking…
         {secs > 0 && (
@@ -1161,7 +1161,7 @@ function ApiModelMenu({
           className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
           aria-label="Choose AI API and model"
         >
-          <Sparkles className="size-3.5 shrink-0 text-primary" />
+          <JarvisLogo className="size-3.5 shrink-0 text-primary" />
           <span className="max-w-[200px] sm:max-w-[260px] truncate">{triggerLabel}</span>
           <ChevronDown className="size-3.5 shrink-0" />
         </button>

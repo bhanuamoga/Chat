@@ -6,7 +6,7 @@ import { NaturalChatWorkspace } from "@/components/natural";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Natural Chat — AI Analytics & Assistant",
+  title: "Jarvis — AI Analytics & Assistant",
 };
 
 export default async function NaturalPage() {

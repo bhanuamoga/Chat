@@ -4,7 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { LogOut, MessageSquare, Users, Sparkles, Menu, Moon, Sun, KeyRound } from "lucide-react";
+import { LogOut, MessageSquare, Users, Menu, Moon, Sun, KeyRound } from "lucide-react";
+import { JarvisLogo } from "@/components/jarvis-logo";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose } from "@/components/ui/sheet";
@@ -20,7 +21,7 @@ import type { UserRow } from "@/lib/types";
 const NAV_ITEMS = [
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/groups", label: "Group Chat", icon: Users },
-  { href: "/natural", label: "Natural Chat", icon: Sparkles, badge: "AI" },
+  { href: "/natural", label: "Jarvis", badge: "AI" },
   { href: "/ai-apis", label: "AI APIs", icon: KeyRound },
 ] as const;
 
@@ -57,7 +58,7 @@ export function NavRail({ user, onOpenProfile }: NavRailProps) {
         <div className="flex flex-1 flex-col items-center gap-2">
           {NAV_ITEMS.map((item) => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-            const Icon = item.icon;
+            const Icon = "icon" in item ? item.icon : JarvisLogo;
             return (
               <Tooltip key={item.href}>
                 <TooltipTrigger asChild>
@@ -80,7 +81,7 @@ export function NavRail({ user, onOpenProfile }: NavRailProps) {
                 </TooltipTrigger>
                 <TooltipContent side="right">
                   {item.label}
-                  {"badge" in item ? " (Gemini 2.5 Flash)" : ""}
+                  {""}
                 </TooltipContent>
               </Tooltip>
             );
@@ -179,7 +180,7 @@ export function MobileMenuDrawer({
           <div className="space-y-1">
             {NAV_ITEMS.map((item) => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-              const Icon = item.icon;
+              const Icon = "icon" in item ? item.icon : JarvisLogo;
               return (
                 <SheetClose asChild key={item.href}>
                   <Link

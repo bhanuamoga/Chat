@@ -178,7 +178,7 @@ export function AiApisClient({ me }: { me: UserRow }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Save failed");
       setConfig(data);
-      toast.success("Default API updated — Natural Chat will use it");
+      toast.success("Default API updated — Jarvis will use it");
     } catch (err: any) {
       toast.error(err?.message || "Could not set default");
     } finally {
@@ -230,7 +230,7 @@ export function AiApisClient({ me }: { me: UserRow }) {
             <div className="min-w-0">
               <h1 className="truncate text-sm font-semibold leading-tight">AI APIs</h1>
               <p className="truncate text-[11px] text-muted-foreground">
-                Your keys, your models, your limits — for Natural Chat
+                Your keys, your models, your limits — for Jarvis
               </p>
             </div>
           </div>
@@ -272,7 +272,7 @@ export function AiApisClient({ me }: { me: UserRow }) {
                     Your daily prompt limit
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    Applies immediately to Natural Chat and resets every midnight (IST).
+                    Applies immediately to Jarvis and resets every midnight (IST).
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -358,7 +358,7 @@ export function AiApisClient({ me }: { me: UserRow }) {
 
               {noKeys && (
                 <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-[11.5px] font-medium text-amber-600 dark:text-amber-400">
-                  No API keys yet — connect at least one above to unlock Natural Chat. One
+                  No API keys yet — connect at least one above to unlock Jarvis. One
                   key can power multiple selected models.
                 </p>
               )}
@@ -565,8 +565,8 @@ function ProviderCard({
               {/* FOOTER — status left, action icons bottom-right */}
               <div className="mt-2 flex items-center justify-between border-t border-border/40 pt-1.5">
                 {isDefault ? (
-                  <span className="text-[9px] font-medium text-emerald-500/90">
-                    Used by Natural Chat
+                  <span className="whitespace-nowrap text-[9px] font-medium text-emerald-500/90">
+                    Used by Jarvis
                   </span>
                 ) : (
                   <button

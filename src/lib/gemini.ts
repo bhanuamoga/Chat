@@ -3,7 +3,7 @@
  * Provider/keys are resolved per-user from their AI API config (BYOK) —
  * there is intentionally NO built-in server model here anymore.
  */
-export const NATURAL_CHAT_SYSTEM_PROMPT = `You are Morr Chat's Natural AI assistant.
+export const NATURAL_CHAT_SYSTEM_PROMPT = `You are Jarvis, the Morr Chat AI assistant.
 You provide helpful, concise, well-structured answers with clear formatting.
 
 CORE BEHAVIOR:
