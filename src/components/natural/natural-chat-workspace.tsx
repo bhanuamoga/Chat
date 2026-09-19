@@ -68,6 +68,7 @@ function stripVisualJson(text: string): string {
 export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
   const [chats, setChats] = useState<NaturalChatRow[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [messages, setMessages] = useState<NaturalMessageRow[]>([]);
   const [input, setInput] = useState("");
   const [loadingChats, setLoadingChats] = useState(true);
@@ -236,9 +237,18 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
     }
   };
 
-  /* ---- 4. Delete a chat thread ---- */
+  /* ---- 4. Delete a chat thread (two-step inline confirm in the row) ---- */
+  const handleAskDeleteChat = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConfirmDeleteId(id);
+  };
+  const handleCancelDeleteChat = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConfirmDeleteId(null);
+  };
   const handleDeleteChat = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    setConfirmDeleteId(null);
     try {
       await fetch(`/api/natural/chats/${id}`, { method: "DELETE" });
       setChats((prev) => prev.filter((c) => c.id !== id));
@@ -468,8 +478,11 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
             chats={filteredChats}
             activeChatId={activeChatId}
             loadingChats={loadingChats}
+            confirmDeleteId={confirmDeleteId}
             onSelectChat={(id) => setActiveChatId(id)}
-            onDeleteChat={handleDeleteChat}
+            onAskDelete={handleAskDeleteChat}
+            onCancelDelete={handleCancelDeleteChat}
+            onConfirmDelete={handleDeleteChat}
             onNewChat={() => handleNewChat()}
           />
           <SidebarFooter chats={chats} />
@@ -477,11 +490,6 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
 
         {/* Desktop Chat Area */}
         <main className="relative flex min-w-0 flex-1 flex-col bg-background" aria-label="Chat Body">
-          <ChatHeader
-            activeChat={activeChat}
-            onNewChat={() => handleNewChat()}
-            showBackButton={false}
-          />
           {noApiKey && <NoApiKeyBanner />}
           <ChatViewport
             scrollRef={scrollRef}
@@ -526,8 +534,11 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
               chats={filteredChats}
               activeChatId={activeChatId}
               loadingChats={loadingChats}
+              confirmDeleteId={confirmDeleteId}
               onSelectChat={handleSelectChat}
-              onDeleteChat={handleDeleteChat}
+              onAskDelete={handleAskDeleteChat}
+              onCancelDelete={handleCancelDeleteChat}
+              onConfirmDelete={handleDeleteChat}
               onNewChat={() => handleNewChat()}
             />
             <SidebarFooter chats={chats} />
@@ -535,12 +546,20 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
         ) : (
           /* ===== MOBILE: Full-screen conversation ===== */
           <div className="flex flex-col h-full w-full bg-background">
-            <ChatHeader
-              activeChat={activeChat}
-              onNewChat={() => handleNewChat()}
-              showBackButton={true}
-              onBack={handleBackToList}
-            />
+            {/* Slim back strip — no bulky header, maximum chat space */}
+            <div className="flex shrink-0 items-center gap-1 border-b border-border bg-card px-1.5 py-1">
+              <button
+                type="button"
+                onClick={handleBackToList}
+                aria-label="Back to conversations"
+                className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <ArrowLeft className="size-5" />
+              </button>
+              <span className="min-w-0 flex-1 truncate px-1 text-sm font-semibold text-foreground">
+                {activeChat?.title || "Chat"}
+              </span>
+            </div>
             {noApiKey && <NoApiKeyBanner />}
             <ChatViewport
               scrollRef={scrollRef}
@@ -627,15 +646,21 @@ function SidebarChatList({
   chats,
   activeChatId,
   loadingChats,
+  confirmDeleteId,
   onSelectChat,
-  onDeleteChat,
+  onAskDelete,
+  onCancelDelete,
+  onConfirmDelete,
   onNewChat,
 }: {
   chats: NaturalChatRow[];
   activeChatId: string | null;
   loadingChats: boolean;
+  confirmDeleteId: string | null;
   onSelectChat: (id: string) => void;
-  onDeleteChat: (id: string, e: React.MouseEvent) => void;
+  onAskDelete: (id: string, e: React.MouseEvent) => void;
+  onCancelDelete: (e: React.MouseEvent) => void;
+  onConfirmDelete: (id: string, e: React.MouseEvent) => void;
   onNewChat: () => void;
 }) {
   return (
@@ -682,14 +707,37 @@ function SidebarChatList({
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={(e) => onDeleteChat(c.id, e)}
-                  className="shrink-0 rounded-md p-1.5 text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive"
-                  title="Delete conversation"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
+                {confirmDeleteId === c.id ? (
+                  /* INLINE CONFIRM: Delete / Cancel replaces the icon — accidental deletes are impossible */
+                  <div
+                    className="flex shrink-0 items-center gap-1.5 animate-in fade-in duration-150"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={(e) => onConfirmDelete(c.id, e)}
+                      className="text-[10px] font-bold text-destructive hover:underline"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onCancelDelete}
+                      className="text-[10px] font-medium text-muted-foreground hover:underline"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => onAskDelete(c.id, e)}
+                    className="shrink-0 rounded-md p-1.5 text-muted-foreground/50 transition-all hover:bg-destructive/10 hover:text-destructive md:opacity-0 md:group-hover:opacity-100"
+                    title="Delete conversation"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                )}
               </div>
             );
           })}
@@ -710,47 +758,6 @@ function SidebarFooter({ chats }: { chats: NaturalChatRow[] }) {
       <span className="font-mono font-semibold text-foreground">
         {chats.reduce((acc, c) => acc + (c.totalTokens || 0), 0).toLocaleString()} tokens
       </span>
-    </div>
-  );
-}
-
-function ChatHeader({
-  activeChat,
-  onNewChat,
-  showBackButton,
-  onBack,
-}: {
-  activeChat: NaturalChatRow | null;
-  onNewChat: () => void;
-  showBackButton: boolean;
-  onBack?: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2 sm:px-4 shrink-0">
-      <div className="flex items-center gap-2 min-w-0">
-        {showBackButton && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-9 shrink-0"
-            onClick={onBack}
-            aria-label="Back to conversations"
-          >
-            <ArrowLeft className="size-5" />
-          </Button>
-        )}
-
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="flex size-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-xs shrink-0">
-            <Sparkles className="size-4" />
-          </span>
-          <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold text-foreground leading-tight">
-              Natural Chat
-            </h3>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
