@@ -685,7 +685,7 @@ function SidebarChatList({
                 <button
                   type="button"
                   onClick={(e) => onDeleteChat(c.id, e)}
-                  className="opacity-0 group-hover:opacity-100 hover:text-destructive p-1 rounded-md transition-opacity"
+                  className="shrink-0 rounded-md p-1.5 text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive"
                   title="Delete conversation"
                 >
                   <Trash2 className="size-3.5" />
@@ -750,18 +750,6 @@ function ChatHeader({
             </h3>
           </div>
         </div>
-      </div>
-
-      <div className="flex items-center gap-1.5">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onNewChat}
-          className="gap-1.5 h-8 text-xs rounded-lg"
-        >
-          <Plus className="size-3.5" />
-          <span className="hidden sm:inline">New Chat</span>
-        </Button>
       </div>
     </div>
   );
