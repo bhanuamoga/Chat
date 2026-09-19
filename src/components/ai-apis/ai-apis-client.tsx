@@ -28,6 +28,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { MobileMenuDrawer } from "@/components/nav-rail";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { AiApisClientConfig, AiApiProviderId, UserRow } from "@/lib/types";
@@ -60,13 +62,6 @@ const PROVIDER_META: Record<
   },
 };
 
-const RATE_MODES = [
-  { id: "5", label: "5 / day", desc: "Default" },
-  { id: "10", label: "10 / day", desc: "More room" },
-  { id: "custom", label: "Custom", desc: "Pick a number" },
-  { id: "unlimited", label: "Unlimited", desc: "No cap" },
-] as const;
-
 type RateDraft = { mode: "5" | "10" | "custom" | "unlimited"; custom: number | null };
 
 export function AiApisClient({ me }: { me: UserRow }) {
@@ -75,6 +70,7 @@ export function AiApisClient({ me }: { me: UserRow }) {
   const [rateDraft, setRateDraft] = useState<RateDraft>({ mode: "5", custom: null });
   const [savingRate, setSavingRate] = useState(false);
   const [busyEntry, setBusyEntry] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
 
   const load = async () => {
@@ -155,8 +151,6 @@ export function AiApisClient({ me }: { me: UserRow }) {
   };
 
   const deleteEntry = async (id: string, name: string) => {
-    if (!confirm(`Remove "${name}"? You'll need another key connected to keep chatting.`))
-      return;
     setBusyEntry(id);
     try {
       const res = await fetch(`/api/natural/apis?id=${encodeURIComponent(id)}`, {
@@ -237,26 +231,25 @@ export function AiApisClient({ me }: { me: UserRow }) {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {RATE_MODES.map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() =>
-                          setRateDraft((d) => ({ ...d, mode: m.id as RateDraft["mode"] }))
-                        }
-                        className={cn(
-                          "rounded-xl border px-3 py-2.5 text-left transition-all",
-                          rateDraft.mode === m.id
-                            ? "border-primary bg-primary/10 text-foreground shadow-xs ring-1 ring-primary/30"
-                            : "border-border/70 bg-muted/40 text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                        )}
-                      >
-                        <div className="text-xs font-semibold">{m.label}</div>
-                        <div className="text-[10px] text-muted-foreground">{m.desc}</div>
-                      </button>
-                    ))}
-                  </div>
+                  <Tabs
+                    value={rateDraft.mode}
+                    onValueChange={(v) =>
+                      setRateDraft((d) => ({ ...d, mode: v as RateDraft["mode"] }))
+                    }
+                  >
+                    <TabsList className="grid h-10 w-full grid-cols-4">
+                      <TabsTrigger value="5" className="text-xs gap-1.5">
+                        5 / day
+                        <span className="hidden sm:inline text-[9px] font-normal text-muted-foreground">default</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="10" className="text-xs gap-1.5">
+                        10 / day
+                        <span className="hidden sm:inline text-[9px] font-normal text-muted-foreground">room</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="custom" className="text-xs">Custom</TabsTrigger>
+                      <TabsTrigger value="unlimited" className="text-xs">Unlimited</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
 
                   {rateDraft.mode === "custom" && (
                     <div className="flex items-center gap-2 pt-1 animate-in fade-in duration-200">
@@ -408,19 +401,41 @@ export function AiApisClient({ me }: { me: UserRow }) {
                                 {busyEntry === e.id ? "Setting…" : "Make default"}
                               </button>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => deleteEntry(e.id, e.name)}
-                              disabled={busyEntry === e.id}
-                              className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                              title="Remove this API key"
-                            >
-                              {busyEntry === e.id ? (
-                                <Loader2 className="size-3.5 animate-spin" />
-                              ) : (
+                            {confirmDelete === e.id ? (
+                              <div className="flex items-center gap-1.5 animate-in fade-in duration-150">
+                                <span className="text-[10px] font-medium text-destructive">
+                                  Remove?
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConfirmDelete(null);
+                                    deleteEntry(e.id, e.name);
+                                  }}
+                                  disabled={busyEntry === e.id}
+                                  className="text-[10px] font-bold text-destructive hover:underline disabled:opacity-60"
+                                >
+                                  {busyEntry === e.id ? "Removing…" : "Yes"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDelete(null)}
+                                  className="text-[10px] font-medium text-muted-foreground hover:underline"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDelete(e.id)}
+                                disabled={busyEntry === e.id}
+                                className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                title="Remove this API key"
+                              >
                                 <Trash2 className="size-3.5" />
-                              )}
-                            </button>
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -608,34 +623,24 @@ function AddApiDialog({
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               1 · Provider
             </p>
-            <div className="grid grid-cols-3 gap-2">
-              {(Object.keys(PROVIDER_META) as AiApiProviderId[]).map((p) => {
-                const m = PROVIDER_META[p];
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => {
-                      setProvider(p);
-                      setFetchedModels(null);
-                      setSelected(new Set());
-                      setError(null);
-                    }}
-                    className={cn(
-                      "rounded-xl border px-2 py-2 text-center transition-all",
-                      provider === p
-                        ? "border-primary bg-primary/10 text-foreground shadow-xs ring-1 ring-primary/30"
-                        : "border-border/70 text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                    )}
-                  >
-                    <div className="flex items-center justify-center gap-1.5 text-xs font-semibold">
-                      <span className={cn("size-1.5 rounded-full", m.dot)} />
-                      {m.short}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            <Tabs
+              value={provider}
+              onValueChange={(v) => {
+                setProvider(v as AiApiProviderId);
+                setFetchedModels(null);
+                setSelected(new Set());
+                setError(null);
+              }}
+            >
+              <TabsList className="grid h-10 w-full grid-cols-3">
+                {(Object.keys(PROVIDER_META) as AiApiProviderId[]).map((p) => (
+                  <TabsTrigger key={p} value={p} className="gap-1.5 text-xs font-semibold">
+                    <span className={cn("size-1.5 rounded-full", PROVIDER_META[p].dot)} />
+                    {PROVIDER_META[p].short}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
             <p className="mt-1 text-[10px] text-muted-foreground">{meta.hint}</p>
           </div>
 
@@ -730,11 +735,11 @@ function AddApiDialog({
                       key={m}
                       className="flex cursor-pointer items-center gap-2.5 border-b border-border/40 px-3 py-2 text-xs last:border-0 hover:bg-accent/60 transition-colors"
                     >
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={selected.has(m)}
-                        onChange={() => toggleModel(m)}
-                        className="size-3.5 shrink-0 accent-[color:var(--primary)]"
+                        onCheckedChange={() => toggleModel(m)}
+                        className="size-3.5"
+                        aria-label={`Select ${m}`}
                       />
                       <span className="truncate font-mono text-[11px]">{m}</span>
                     </label>

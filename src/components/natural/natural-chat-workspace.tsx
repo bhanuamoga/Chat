@@ -825,8 +825,7 @@ function ChatViewport({
               <div
                 key={m.id}
                 className={cn(
-                  "w-full",
-                  isUser ? "bg-background" : "bg-muted/30"
+                  "w-full"
                 )}
               >
                 {/* ChatGPT style: small padding, avatar + content inline, no max-width on mobile */}
@@ -991,7 +990,7 @@ function ChatInput({
   const reached = !!usage?.reached || noApiKey;
 
   return (
-    <div className="shrink-0 p-3 sm:p-4 bg-background border-t border-border/50">
+    <div className="shrink-0 px-3 pb-3 pt-1 sm:px-4 sm:pb-4">
       <div className="max-w-3xl mx-auto">
         {/* Daily limit notice — shown above the input, ChatGPT style */}
         {reached && usage && (
