@@ -524,110 +524,32 @@ function ProviderCard({
                 isDefault ? "border-primary/40 bg-primary/5" : "border-border/60 bg-muted/30"
               )}
             >
-              {/* name + actions row */}
-              <div className="flex items-center gap-1.5">
-                <p className="min-w-0 truncate text-[12px] font-semibold text-foreground flex-1">
-                  {e.name}
-                </p>
+              {/* INFO ROW — full name + default badge (nothing crammed) */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="truncate text-[12.5px] font-semibold leading-tight text-foreground"
+                    title={e.name}
+                  >
+                    {e.name}
+                  </p>
+                  <p className="mt-0.5 truncate font-mono text-[9.5px] text-muted-foreground">
+                    {e.maskedKey}
+                  </p>
+                </div>
                 {isDefault && (
                   <span className="shrink-0 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wide text-emerald-500">
                     Default
                   </span>
                 )}
-
-                {/* models · three-dot dropdown */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                      aria-label={`Models and actions for ${e.name}`}
-                    >
-                      <MoreHorizontal className="size-3.5" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    sideOffset={6}
-                    className="nice-scroll max-h-[260px] w-[250px] overflow-y-auto"
-                  >
-                    <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      Models ({e.models.length})
-                    </DropdownMenuLabel>
-                    {e.models.map((m) => (
-                      <DropdownMenuItem
-                        key={m}
-                        className="font-mono text-[11px] h-6.5"
-                        onSelect={(ev) => ev.preventDefault()}
-                      >
-                        <span className="truncate">{m}</span>
-                      </DropdownMenuItem>
-                    ))}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => onEdit(e)} className="gap-2 text-xs">
-                      <Pencil className="size-3.5" />
-                      Edit connection…
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* edit */}
-                <button
-                  type="button"
-                  onClick={() => onEdit(e)}
-                  className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                  title="Edit this connection"
-                >
-                  <Pencil className="size-3.5" />
-                </button>
-
-                {/* delete with inline confirm */}
-                {confirmDelete === e.id ? (
-                  <div className="flex items-center gap-1 animate-in fade-in duration-150">
-                    <button
-                      type="button"
-                      onClick={() => onConfirmDelete(e.id)}
-                      disabled={busy}
-                      className="text-[9px] font-bold text-destructive hover:underline disabled:opacity-60"
-                    >
-                      {busy ? "…" : "Yes"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onCancelDelete}
-                      className="text-[9px] font-medium text-muted-foreground hover:underline"
-                    >
-                      No
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onAskDelete(e.id)}
-                    disabled={busy}
-                    className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                    title="Remove"
-                  >
-                    {busy ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="size-3.5" />
-                    )}
-                  </button>
-                )}
               </div>
 
-              {/* masked key */}
-              <p className="mt-0.5 truncate font-mono text-[9.5px] text-muted-foreground">
-                {e.maskedKey}
-              </p>
-
-              {/* model chips + set default */}
-              <div className="mt-1.5 flex flex-wrap items-center gap-1">
+              {/* MODEL CHIPS */}
+              <div className="mt-1.5 flex flex-wrap items-center gap-1" title={e.models.join(", ")}>
                 {e.models.slice(0, 2).map((m) => (
                   <span
                     key={m}
-                    className="max-w-[120px] truncate rounded-md border border-border/60 bg-background/80 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground"
+                    className="max-w-[130px] truncate rounded-md border border-border/60 bg-background/80 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground"
                     title={m}
                   >
                     {m}
@@ -638,16 +560,109 @@ function ProviderCard({
                     +{e.models.length - 2}
                   </span>
                 )}
-                {!isDefault && (
+              </div>
+
+              {/* FOOTER — status left, action icons bottom-right */}
+              <div className="mt-2 flex items-center justify-between border-t border-border/40 pt-1.5">
+                {isDefault ? (
+                  <span className="text-[9px] font-medium text-emerald-500/90">
+                    Used by Natural Chat
+                  </span>
+                ) : (
                   <button
                     type="button"
                     onClick={() => onSetDefault(e.id)}
                     disabled={busy}
-                    className="ml-auto text-[9px] font-semibold text-primary hover:underline disabled:opacity-60"
+                    className="text-[9px] font-semibold text-primary hover:underline disabled:opacity-60"
                   >
                     Set default
                   </button>
                 )}
+
+                <div className="flex items-center gap-0.5">
+                  {/* models · three-dot dropdown */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                        aria-label={`All models of ${e.name}`}
+                        title="View all models"
+                      >
+                        <MoreHorizontal className="size-3.5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      sideOffset={6}
+                      className="nice-scroll max-h-[260px] w-[250px] overflow-y-auto"
+                    >
+                      <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        Models ({e.models.length})
+                      </DropdownMenuLabel>
+                      {e.models.map((m) => (
+                        <DropdownMenuItem
+                          key={m}
+                          className="font-mono text-[11px] h-6.5"
+                          onSelect={(ev) => ev.preventDefault()}
+                        >
+                          <span className="truncate">{m}</span>
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => onEdit(e)} className="gap-2 text-xs">
+                        <Pencil className="size-3.5" />
+                        Edit connection…
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* edit */}
+                  <button
+                    type="button"
+                    onClick={() => onEdit(e)}
+                    className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                    title="Edit this connection"
+                  >
+                    <Pencil className="size-3.5" />
+                  </button>
+
+                  {/* delete with inline confirm */}
+                  {confirmDelete === e.id ? (
+                    <div className="flex items-center gap-1 px-1 animate-in fade-in duration-150">
+                      <span className="text-[9px] text-destructive/80">Remove?</span>
+                      <button
+                        type="button"
+                        onClick={() => onConfirmDelete(e.id)}
+                        disabled={busy}
+                        className="text-[9px] font-bold text-destructive hover:underline disabled:opacity-60"
+                      >
+                        {busy ? "…" : "Yes"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onCancelDelete}
+                        className="text-[9px] font-medium text-muted-foreground hover:underline"
+                      >
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onAskDelete(e.id)}
+                      disabled={busy}
+                      className="rounded-md p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      title="Remove"
+                    >
+                      {busy ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="size-3.5" />
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -697,7 +712,11 @@ function ApiKeyDialog({
 }) {
   const [provider, setProvider] = useState<AiApiProviderId>(lockedProvider);
   const [name, setName] = useState(entry?.name || "");
-  const [apiKey, setApiKey] = useState("");
+  /* Edit mode: the key field comes PRE-FILLED with the masked current key (dots).
+     As long as it's untouched we keep the stored key; clearing & pasting replaces it. */
+  const keySentinel = mode === "edit" ? entry?.maskedKey || null : null;
+  const [apiKey, setApiKey] = useState(keySentinel || "");
+  const keyDirty = keySentinel ? apiKey.trim() !== keySentinel : apiKey.trim().length > 0;
   const [fetching, setFetching] = useState(false);
   const [fetchedModels, setFetchedModels] = useState<string[] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -748,7 +767,11 @@ function ApiKeyDialog({
 
   const fetchModels = async () => {
     if (!apiKey.trim()) {
-      setError(mode === "edit" ? "Paste a new key to re-validate, or just edit name/models" : "Paste your API key first");
+      setError("Paste your API key first");
+      return;
+    }
+    if (mode === "edit" && !keyDirty) {
+      setError("That's your saved key — clear it and paste a new one to re-validate.");
       return;
     }
     setFetching(true);
@@ -802,7 +825,7 @@ function ApiKeyDialog({
                 entryUpdate: {
                   id: entry!.id,
                   name: name.trim(),
-                  apiKey: apiKey.trim() || null,
+                  apiKey: keyDirty && apiKey.trim().length >= 8 ? apiKey.trim() : null,
                   models: Array.from(selected),
                 },
               }
@@ -896,7 +919,7 @@ function ApiKeyDialog({
               3 · API key{" "}
               {mode === "edit" && (
                 <span className="ml-1 font-normal normal-case text-muted-foreground/70">
-                  (leave blank to keep {entry?.maskedKey})
+                  (saved key is pre-filled — clear & paste to replace)
                 </span>
               )}
             </p>
@@ -908,14 +931,14 @@ function ApiKeyDialog({
                   setApiKey(e.target.value);
                   if (mode === "add") setFetchedModels(null);
                 }}
-                placeholder={mode === "edit" ? "Paste a new key (optional)…" : "Paste your key…"}
+                placeholder={mode === "edit" ? "Your saved key (keep, or clear & paste a new one)" : "Paste your key…"}
                 className="h-9 text-xs font-mono"
                 autoComplete="off"
               />
               <Button
                 variant="outline"
                 onClick={fetchModels}
-                disabled={fetching || !apiKey.trim()}
+                disabled={fetching || !apiKey.trim() || (mode === "edit" && !keyDirty)}
                 className="h-9 shrink-0 gap-1.5 text-xs"
               >
                 {fetching ? (
@@ -968,7 +991,7 @@ function ApiKeyDialog({
                     className="h-8 pl-8 text-xs"
                   />
                 </div>
-                <div className="nice-scroll max-h-44 overflow-y-auto rounded-xl border border-border/70">
+                <div className="nice-scroll max-h-56 scroll-smooth overflow-y-auto rounded-xl border border-border/70">
                   {filteredModels.length === 0 ? (
                     <p className="p-3 text-center text-[11px] text-muted-foreground">
                       No models match "{modelSearch}"
