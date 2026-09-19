@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, Check, Loader2, Upload, X } from "lucide-react";
+import { Camera, Check, Loader2, MapPin, Phone, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { UserAvatar } from "@/components/chat-bits";
-import { ConnectionStatus } from "@/components/connection-status";
 import { AVATAR_COLORS, AVATAR_EMOJIS, cn } from "@/lib/utils";
 import type { UserRow } from "@/lib/types";
 
@@ -23,6 +22,12 @@ interface ProfileDialogProps {
 export function ProfileDialog({ open, onOpenChange, me, onSaved }: ProfileDialogProps) {
   const [name, setName] = useState(me.displayName);
   const [bio, setBio] = useState(me.bio);
+  const [phone, setPhone] = useState(me.phone ?? "");
+  const [address, setAddress] = useState(me.address ?? "");
+  const [city, setCity] = useState(me.city ?? "");
+  const [state, setState] = useState(me.state ?? "");
+  const [postalCode, setPostalCode] = useState(me.postalCode ?? "");
+  const [country, setCountry] = useState(me.country ?? "");
   const [emoji, setEmoji] = useState(me.avatarEmoji);
   const [color, setColor] = useState(me.avatarColor);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(me.avatarUrl ?? null);
@@ -34,6 +39,12 @@ export function ProfileDialog({ open, onOpenChange, me, onSaved }: ProfileDialog
     if (open) {
       setName(me.displayName);
       setBio(me.bio);
+      setPhone(me.phone ?? "");
+      setAddress(me.address ?? "");
+      setCity(me.city ?? "");
+      setState(me.state ?? "");
+      setPostalCode(me.postalCode ?? "");
+      setCountry(me.country ?? "");
       setEmoji(me.avatarEmoji);
       setColor(me.avatarColor);
       setAvatarUrl(me.avatarUrl ?? null);
@@ -100,6 +111,12 @@ export function ProfileDialog({ open, onOpenChange, me, onSaved }: ProfileDialog
           avatarEmoji: emoji,
           avatarColor: color,
           avatarUrl,
+          phone: phone.trim(),
+          address: address.trim(),
+          city: city.trim(),
+          state: state.trim(),
+          postalCode: postalCode.trim(),
+          country: country.trim(),
         }),
       });
       const j = await r.json();
@@ -269,9 +286,39 @@ export function ProfileDialog({ open, onOpenChange, me, onSaved }: ProfileDialog
             {saving ? "Saving…" : "Save changes"}
           </Button>
 
-          <div className="w-full space-y-2 rounded-lg border border-border bg-muted/30 p-3 text-left">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Connections</p>
-            <ConnectionStatus />
+          {/* Personal info — real address details, saved to the user profile */}
+          <div className="w-full space-y-3 rounded-lg border border-border bg-muted/30 p-3 text-left">
+            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <MapPin className="size-3" /> Personal info
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="profile-address" className="text-xs">Address</Label>
+              <Input id="profile-address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Flat 204, Madhapur…" className="h-9 bg-card" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="profile-city" className="text-xs">City / Province</Label>
+                <Input id="profile-city" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Hyderabad" className="h-9 bg-card" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="profile-state" className="text-xs">State</Label>
+                <Input id="profile-state" value={state} onChange={(e) => setState(e.target.value)} placeholder="Telangana" className="h-9 bg-card" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="profile-postal" className="text-xs">Postal / ZIP</Label>
+                <Input id="profile-postal" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder="500081" className="h-9 bg-card" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="profile-country" className="text-xs">Country</Label>
+                <Input id="profile-country" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="India" className="h-9 bg-card" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="profile-phone" className="flex items-center gap-1 text-xs">
+                <Phone className="size-3" /> Phone
+              </Label>
+              <Input id="profile-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" className="h-9 bg-card" />
+            </div>
           </div>
         </div>
       </DialogContent>

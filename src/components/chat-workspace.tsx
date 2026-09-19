@@ -34,7 +34,6 @@ import type {
 import { messageFileUrl } from "@/lib/types";
 import { useRealtime } from "@/lib/realtime-client";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { ConnectionStatus } from "@/components/connection-status";
 import { MobileMenuDrawer } from "@/components/nav-rail";
 import {
   AVATAR_COLORS,

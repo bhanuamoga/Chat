@@ -20,6 +20,11 @@ export const users = pgTable(
     supabaseId: text("supabase_id"),
     emailVerified: timestamp("email_verified", { withTimezone: true }),
     phone: text("phone"),
+    address: text("address"),
+    city: text("city"),          // city / province
+    state: text("state"),
+    postalCode: text("postal_code"),
+    country: text("country"),
     avatarUrl: text("avatar_url"),
     avatarColor: text("avatar_color").notNull().default("#00a884"),
     avatarEmoji: text("avatar_emoji").notNull().default("😀"),

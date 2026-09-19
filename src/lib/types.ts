@@ -4,6 +4,11 @@ export type UserRow = {
   email?: string | null;
   supabaseId?: string | null;
   phone: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
   avatarUrl?: string | null;
   avatarColor: string;
   avatarEmoji: string;

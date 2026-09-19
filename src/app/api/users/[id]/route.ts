@@ -31,6 +31,11 @@ export async function PATCH(
   if (typeof body.avatarEmoji === "string") patch.avatarEmoji = body.avatarEmoji.slice(0, 8);
   if (typeof body.avatarUrl === "string" || body.avatarUrl === null) patch.avatarUrl = body.avatarUrl;
   if (typeof body.phone === "string") patch.phone = body.phone.slice(0, 30);
+  if (typeof body.address === "string") patch.address = body.address.slice(0, 160);
+  if (typeof body.city === "string") patch.city = body.city.slice(0, 60);
+  if (typeof body.state === "string") patch.state = body.state.slice(0, 60);
+  if (typeof body.postalCode === "string") patch.postalCode = body.postalCode.slice(0, 20);
+  if (typeof body.country === "string") patch.country = body.country.slice(0, 60);
   if (body.heartbeat) patch.lastSeen = new Date();
 
   if (Object.keys(patch).length === 0) {
