@@ -5,7 +5,6 @@ import {
   ArrowUp,
   Loader2,
   Sparkles,
-  Bot,
   Plus,
   Trash2,
   Coins,
@@ -543,7 +542,7 @@ function SidebarChatList({
         </div>
       ) : chats.length === 0 ? (
         <div className="p-6 text-center text-muted-foreground space-y-2">
-          <Bot className="size-8 mx-auto text-muted-foreground/60" />
+          <Sparkles className="size-8 mx-auto text-muted-foreground/60" />
           <p className="text-xs">No AI conversations yet.</p>
           <Button variant="outline" size="sm" onClick={onNewChat} className="text-xs h-7">
             Start First Chat
@@ -747,7 +746,7 @@ function ChatViewport({
                         />
                       ) : (
                         <div className="size-6 sm:size-7 rounded-lg bg-primary/15 text-primary flex items-center justify-center shadow-xs">
-                          <Bot className="size-3 sm:size-3.5" />
+                          <Sparkles className="size-3 sm:size-3.5" />
                         </div>
                       )}
                     </div>
@@ -846,7 +845,7 @@ function ChatViewport({
 
                 <div className="flex gap-2.5 sm:gap-3">
                   <div className="size-6 sm:size-7 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0">
-                    <Bot className="size-3 sm:size-3.5" />
+                    <Sparkles className="size-3 sm:size-3.5" />
                   </div>
                   <div className="min-w-0 flex-1 text-foreground">
                     <MarkdownRenderer content={stripVisualJson(streaming.text)} />
