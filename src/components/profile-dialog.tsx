@@ -142,7 +142,7 @@ export function ProfileDialog({ open, onOpenChange, me, onSaved }: ProfileDialog
           <DialogDescription>Your public profile — photo, name and personal info.</DialogDescription>
         </DialogHeader>
 
-        <div className="nice-scroll flex-1 overflow-y-auto px-5 py-4">
+        <div className="nice-scroll flex-1 overflow-y-auto px-4 py-4 sm:px-5">
         <div className="flex flex-col items-center gap-3.5 w-full">
           {/* Avatar with Photo Upload Button */}
           <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
@@ -274,16 +274,16 @@ export function ProfileDialog({ open, onOpenChange, me, onSaved }: ProfileDialog
 
           <div className="w-full space-y-1.5">
             <Label htmlFor="profile-name">Display name</Label>
-            <Input id="profile-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
+            <Input id="profile-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className="h-10" />
           </div>
 
           <div className="w-full space-y-1.5">
             <Label htmlFor="profile-bio">About</Label>
-            <Input id="profile-bio" value={bio} onChange={(e) => setBio(e.target.value)} placeholder="About" />
+            <Input id="profile-bio" value={bio} onChange={(e) => setBio(e.target.value)} placeholder="About" className="h-10" />
           </div>
 
-          {/* Personal info — real address details, saved to the user profile */}
-          <div className="w-full space-y-3 rounded-lg border border-border bg-muted/30 p-3 text-left">
+          {/* Personal info — clean section, no nested card masking */}
+          <div className="w-full space-y-3 border-t border-border/70 pt-4 text-left">
             <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <MapPin className="size-3" /> Personal info
             </p>

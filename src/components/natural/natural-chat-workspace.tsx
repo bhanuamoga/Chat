@@ -826,8 +826,9 @@ function ChatViewport({
           </div>
         </div>
       ) : (
-        /* ===== Chat Messages — one centered column, same width as composer ===== */
-        <div className="mx-auto w-full max-w-3xl px-3 sm:px-4">
+        /* ===== Chat Messages — outer px + inner max-w-3xl, EXACTLY like the composer ===== */
+        <div className="w-full px-3 sm:px-4">
+          <div className="mx-auto w-full max-w-3xl">
           {messages.map((m) => {
             const isUser = m.role === "user";
             return (
@@ -959,6 +960,7 @@ function ChatViewport({
               </div>
             </div>
           )}
+          </div>
         </div>
       )}
     </div>
