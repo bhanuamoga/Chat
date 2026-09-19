@@ -73,6 +73,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [thinkStartTs, setThinkStartTs] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   /* Daily prompt quota (resets at midnight IST) */
   const [usage, setUsage] = useState<DailyUsageInfo | null>(null);
@@ -311,6 +312,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
     setMessages((prev) => [...prev, optimisticUserMsg]);
     setInput("");
     setGenerating(true);
+    setThinkStartTs(Date.now());
     scrollToBottom();
 
     try {
@@ -429,6 +431,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
       setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsg.id));
     } finally {
       setGenerating(false);
+      setThinkStartTs(null);
     }
   };
 
@@ -489,6 +492,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
             me={me}
             onSendMessage={handleSendMessage}
             modelLabel={noApiKey ? "your API key" : currentApiLabel}
+            thinkStartTs={thinkStartTs}
           />
           <ChatInput
             inputRef={inputRef}
@@ -547,6 +551,7 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
               me={me}
               onSendMessage={handleSendMessage}
               modelLabel={noApiKey ? "your API key" : currentApiLabel}
+              thinkStartTs={thinkStartTs}
             />
             <ChatInput
               inputRef={inputRef}
@@ -776,6 +781,7 @@ function ChatViewport({
   me,
   onSendMessage,
   modelLabel,
+  thinkStartTs,
 }: {
   scrollRef: React.RefObject<HTMLDivElement | null>;
   messages: NaturalMessageRow[];
@@ -785,6 +791,7 @@ function ChatViewport({
   me: UserRow;
   onSendMessage: (text: string) => void;
   modelLabel: string;
+  thinkStartTs: number | null;
 }) {
   return (
     <div ref={scrollRef} className="nice-scroll flex-1 overflow-y-auto">
@@ -914,16 +921,13 @@ function ChatViewport({
             );
           })}
 
-          {/* THINKING phase — ChatGPT style: one quiet line, no spinner box */}
+          {/* THINKING phase — ChatGPT style: quiet line with a live timer, no spinner box */}
           {(generating || streaming) && !streaming?.text && (
             <div className="w-full px-3 sm:px-5 py-3 animate-in fade-in duration-200">
               <div className="max-w-3xl mx-auto space-y-1.5">
-                <div className="flex items-center gap-2 text-[13.5px] font-medium text-muted-foreground">
-                  <Sparkles className="size-3.5 animate-pulse text-primary" />
-                  <span>Thinking…</span>
-                </div>
+                <ThinkingRow startTs={thinkStartTs} />
                 {streaming?.reasoning && (
-                  <p className="whitespace-pre-wrap border-l-2 border-border/70 pl-3 text-[13px] italic leading-relaxed text-muted-foreground/80 animate-in fade-in duration-300">
+                  <p className="nice-scroll max-h-40 overflow-y-auto whitespace-pre-wrap border-l-2 border-primary/30 pl-3 text-[13px] italic leading-relaxed text-muted-foreground/85 animate-in fade-in duration-300">
                     {streaming.reasoning}
                   </p>
                 )}
@@ -1095,6 +1099,28 @@ const PROVIDER_SHORT_LABELS: Record<string, string> = {
   openai: "OpenAI",
   openrouter: "OpenRouter",
 };
+
+/** "Thinking… Ns" with a live ticking elapsed timer — feels like ChatGPT. */
+function ThinkingRow({ startTs }: { startTs: number | null }) {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    const read = () => setSecs(startTs ? Math.max(0, Math.floor((Date.now() - startTs) / 1000)) : 0);
+    read();
+    const t = setInterval(read, 1000);
+    return () => clearInterval(t);
+  }, [startTs]);
+  return (
+    <div className="flex items-center gap-2 text-[13.5px] font-medium text-muted-foreground">
+      <Sparkles className="size-3.5 animate-pulse text-primary" />
+      <span>
+        Thinking…
+        {secs > 0 && (
+          <span className="ml-1.5 tabular-nums text-muted-foreground/70">{secs}s</span>
+        )}
+      </span>
+    </div>
+  );
+}
 
 /** Alert strip shown in the chat when the user has no connected API key. */
 function NoApiKeyBanner() {

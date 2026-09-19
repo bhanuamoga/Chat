@@ -93,3 +93,32 @@ export function initials(name: string): string {
 export function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
+
+/** Normalize a web-search citation: Gemini grounding URLs are wrapped in a
+ *  vertexaisearch.cloud.google.com redirect, so recover the REAL site domain
+ *  from the chunk title when it looks like a host name. */
+export function normalizeSourceRef(s: { url: string; title?: string; domain?: string }) {
+  let host = "";
+  try {
+    host = new URL(s.url).hostname.replace(/^www\./, "");
+  } catch {
+    /* ignore */
+  }
+  const isGroundingRedirect = /(^|\.)vertexaisearch\.cloud\.google\.com$/.test(host);
+  const titleIsDomain =
+    !!s.title &&
+    /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(s.title.trim());
+
+  let domain = (s.domain || "").trim().toLowerCase();
+  if (isGroundingRedirect || /vertexaisearch/.test(domain)) {
+    domain = "";
+    if (titleIsDomain) {
+      domain = s.title!.trim().toLowerCase().replace(/^www\./, "").split("/")[0];
+    }
+  } else if (!domain) {
+    domain = host;
+  }
+
+  const title = s.title && !/vertexaisearch/.test(s.title) ? s.title : undefined;
+  return { url: s.url, title, domain };
+}

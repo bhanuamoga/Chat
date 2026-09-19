@@ -8,6 +8,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { getDailyUsage } from "@/lib/rate-limit";
 import { parseAiApiConfig } from "@/lib/ai-config";
+import { normalizeSourceRef } from "@/lib/utils";
 import type { SourceRef, VisualData } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -208,16 +209,16 @@ export async function POST(
               send({ t: "reasoning", d: delta });
             }
           } else if (p.type === "source" && p.sourceType === "url" && p.url) {
-            /* Web-search citation — render as a clickable card client-side */
-            let domain = "";
-            try {
-              domain = new URL(p.url).hostname.replace(/^www\./, "");
-            } catch { /* ignore */ }
-            if (!sources.some((x) => x.url === p.url)) {
+            /* Web-search citation — normalize the grounding redirect wrapper
+               (vertexaisearch.cloud.google.com) into the real site domain,
+               and dedupe on domain+title so the same site never shows twice. */
+            const norm = normalizeSourceRef({ url: p.url, title: p.title });
+            const key = `${(norm.domain || "").toLowerCase()}|${(norm.title || "").toLowerCase()}`;
+            if (!sources.some((x) => `${(x.domain || "").toLowerCase()}|${(x.title || "").toLowerCase()}` === key)) {
               const card: SourceRef = {
-                url: p.url,
-                title: p.title || domain || p.url,
-                domain,
+                url: norm.url,
+                title: norm.title || norm.domain || norm.url,
+                domain: norm.domain || undefined,
               };
               sources.push(card);
               send({ t: "source", ...card });

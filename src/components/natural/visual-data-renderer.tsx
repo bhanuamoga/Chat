@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -40,47 +41,97 @@ import {
 } from "lucide-react";
 import type { SourceRef, VisualChart, VisualData } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { normalizeSourceRef } from "@/lib/utils";
 
-/** Clickable source/citation cards (news, socials, references) — opens in a new tab. */
-export function SourceCards({ sources }: { sources: SourceRef[] }) {
-  if (!Array.isArray(sources) || sources.length === 0) return null;
+/** Site thumbnail: real favicon (large) with a graceful letter fallback. */
+function SourceFavicon({ domain, size }: { domain: string; size: number }) {
+  const [failed, setFailed] = React.useState(false);
+  if (!domain || failed) {
+    return (
+      <span
+        className="flex items-center justify-center rounded-lg bg-primary/12 font-bold uppercase text-primary"
+        style={{ width: size, height: size, fontSize: size * 0.38 }}
+      >
+        {(domain || "↗").slice(0, 2)}
+      </span>
+    );
+  }
   return (
-    <div className="w-full">
-      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        <Globe className="size-3.5" />
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`}
+      alt=""
+      width={size}
+      height={size}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="rounded-lg object-contain drop-shadow-sm"
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
+/** Clickable source/citation cards — Perplexity-style: image on top, text below,
+ *  one shadcn Card per source; duplicates (same site+title) are merged. */
+export function SourceCards({ sources, bare }: { sources: SourceRef[]; bare?: boolean }) {
+  if (!Array.isArray(sources) || sources.length === 0) return null;
+
+  /* normalize + dedupe (also heals legacy rows stored before normalization) */
+  const seen = new Set<string>();
+  const list = sources
+    .map((s) => normalizeSourceRef(s))
+    .filter((s) => {
+      const key = `${s.domain.toLowerCase()}|${(s.title || "").toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 12);
+
+  if (!list.length) return null;
+
+  return (
+    <div className={bare ? "w-full" : "w-full pt-3.5 border-t border-border/50"}>
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <Globe className="size-3.5 text-primary" />
         Sources
+        <span className="normal-case font-normal text-muted-foreground/70">
+          · {list.length}
+        </span>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {sources.slice(0, 12).map((s, i) => {
-          const domain =
-            s.domain ||
-            (() => {
-              try {
-                return new URL(s.url).hostname.replace(/^www\./, "");
-              } catch {
-                return s.url;
-              }
-            })();
+        {list.map((s, i) => {
+          const titleLine = s.title || s.domain || "Web source";
+          const subLine = s.domain && s.domain !== titleLine ? s.domain : null;
           return (
             <a
               key={`${s.url}-${i}`}
               href={s.url}
               target="_blank"
               rel="noopener noreferrer nofollow"
-              className="group flex items-center gap-2.5 rounded-xl border border-border/70 bg-card/70 px-3 py-2 transition-all hover:border-primary/40 hover:bg-primary/5 shadow-2xs"
+              className="group block"
             >
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-[10px] font-bold uppercase text-primary">
-                {domain.slice(0, 2) || "↗"}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12px] font-medium text-foreground group-hover:text-primary transition-colors">
-                  {s.title || domain}
-                </span>
-                <span className="block truncate text-[10px] text-muted-foreground">
-                  {domain}
-                </span>
-              </span>
-              <ExternalLink className="size-3.5 shrink-0 text-muted-foreground group-hover:text-primary transition-colors" />
+              <Card className="h-full overflow-hidden gap-0 border-border/70 shadow-2xs py-0 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/40 group-hover:shadow-md">
+                {/* image area */}
+                <div className="relative flex h-20 items-center justify-center bg-gradient-to-br from-primary/[0.08] via-muted/50 to-muted/25">
+                  <SourceFavicon domain={s.domain} size={34} />
+                  <ExternalLink className="absolute right-2 top-2 size-3 text-muted-foreground/60 transition-colors group-hover:text-primary" />
+                </div>
+                {/* text area */}
+                <CardContent className="px-3 py-2.5">
+                  <p className="line-clamp-2 text-[12px] font-medium leading-snug text-foreground transition-colors group-hover:text-primary">
+                    {titleLine}
+                  </p>
+                  <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    {subLine && (
+                      <span className="truncate">{subLine}</span>
+                    )}
+                    {!subLine && s.domain && <span className="truncate">{s.domain}</span>}
+                  </div>
+                </CardContent>
+              </Card>
             </a>
           );
         })}
@@ -418,7 +469,7 @@ export function VisualDataRenderer({ data }: VisualDataRendererProps) {
       )}
 
       {/* 6. Clickable source/citation cards */}
-      {hasSources && <SourceCards sources={data.sources!} />}
+      {hasSources && <SourceCards sources={data.sources!} bare />}
     </div>
   );
 }
