@@ -147,21 +147,31 @@ export async function POST(
 
       try {
         for await (const part of result.fullStream as AsyncIterable<any>) {
-          const p = part as { type: string; delta?: string; textDelta?: string };
+          const p = part as { type: string; text?: string; delta?: string; textDelta?: string };
+          // AI SDK 7 fullStream parts: { type: 'text-delta', text } / { type: 'reasoning-delta', text }
           if (p.type === "text-delta" || p.type === "text") {
-            const delta = p.delta ?? p.textDelta ?? "";
+            const delta = p.text ?? p.delta ?? p.textDelta ?? "";
             if (delta) {
               fullText += delta;
               send({ t: "text", d: delta });
             }
           } else if (p.type === "reasoning-delta" || p.type === "reasoning") {
-            const delta = p.delta ?? p.textDelta ?? "";
+            const delta = p.text ?? p.delta ?? p.textDelta ?? "";
             if (delta) {
               send({ t: "reasoning", d: delta });
             }
           } else if (p.type === "error") {
             throw (part as { error?: unknown }).error;
           }
+        }
+
+        // Guard: never persist an empty assistant bubble
+        if (!fullText.trim()) {
+          send({
+            t: "error",
+            d: "The model returned an empty response. Please try sending again.",
+          });
+          return;
         }
 
         // 4. Persist assistant message once the stream completes
