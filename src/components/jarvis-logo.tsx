@@ -10,7 +10,7 @@ export function JarvisLogo({ className }: { className?: string }) {
       fill="none"
       className={className}
       aria-hidden="true"
-      style={{ filter: "drop-shadow(0 0 2.5px hsl(var(--primary) / 0.45))" }}
+      style={{ filter: "drop-shadow(0 0 2.5px color-mix(in srgb, var(--primary) 45%, transparent))" }}
     >
       {/* core */}
       <circle cx="12" cy="12" r="3.3" fill="currentColor" />

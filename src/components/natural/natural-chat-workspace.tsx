@@ -556,8 +556,6 @@ export function NaturalChatWorkspace({ me }: NaturalChatWorkspaceProps) {
               >
                 <ArrowLeft className="size-5" />
               </button>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/jarvis-hero.png" alt="Jarvis" className="size-6 shrink-0 rounded-md object-cover ring-1 ring-border/70" />
               <span className="min-w-0 flex-1 truncate px-1 text-sm font-semibold text-foreground">
                 {activeChat?.title || "Chat"}
               </span>
@@ -604,12 +602,9 @@ function SidebarHeader({ me, onNewChat }: { me: UserRow; onNewChat: () => void }
       <div className="flex items-center gap-2">
         <MobileMenuDrawer user={me} />
         <div className="flex items-center gap-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/jarvis-hero.png"
-            alt="Jarvis"
-            className="size-9 shrink-0 rounded-xl object-cover shadow-sm ring-1 ring-border"
-          />
+          <span className="flex size-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
+            <JarvisLogo className="size-4" />
+          </span>
           <div>
             <h2 className="text-sm font-semibold leading-tight">Jarvis</h2>
           </div>
@@ -803,12 +798,9 @@ function ChatViewport({
       ) : messages.length === 0 ? (
         /* ===== Welcome / Zero State ===== */
         <div className="flex flex-col items-center justify-center min-h-[60vh] max-w-2xl mx-auto text-center px-4 space-y-6">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/jarvis-hero.png"
-            alt="Jarvis"
-            className="size-24 rounded-3xl object-cover shadow-xl ring-1 ring-border"
-          />
+          <div className="size-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-sm">
+            <JarvisLogo className="size-7" />
+          </div>
 
           <div className="space-y-1.5">
             <h2 className="text-2xl font-bold tracking-tight text-foreground">
@@ -860,12 +852,9 @@ function ChatViewport({
                           className="shadow-xs"
                         />
                       ) : (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src="/jarvis-hero.png"
-                          alt="Jarvis"
-                          className="size-[18px] shrink-0 rounded-md object-cover ring-1 ring-border/60"
-                        />
+                        <div className="flex size-[18px] shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
+                          <JarvisLogo className="size-2.5" />
+                        </div>
                       )}
                       <span className="text-xs font-semibold text-foreground">
                         {isUser ? me.displayName : prettyModelLabel(m.modelUsed)}
@@ -957,12 +946,9 @@ function ChatViewport({
 
                 <div>
                   <div className="mb-1.5 flex items-center gap-1.5">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src="/jarvis-hero.png"
-                      alt="Jarvis"
-                      className="size-[18px] shrink-0 rounded-md object-cover ring-1 ring-border/60"
-                    />
+                    <div className="flex size-[18px] shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
+                      <JarvisLogo className="size-2.5" />
+                    </div>
                     <span className="text-xs font-semibold text-foreground">Jarvis</span>
                   </div>
                   <div className="w-full text-foreground">
