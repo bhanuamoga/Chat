@@ -58,7 +58,8 @@ export function NavRail({ user, onOpenProfile }: NavRailProps) {
         <div className="flex flex-1 flex-col items-center gap-2">
           {NAV_ITEMS.map((item) => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-            const Icon = "icon" in item ? item.icon : JarvisLogo;
+            const hasIcon = "icon" in item;
+            const Icon = hasIcon ? item.icon : JarvisLogo;
             return (
               <Tooltip key={item.href}>
                 <TooltipTrigger asChild>
@@ -72,7 +73,11 @@ export function NavRail({ user, onOpenProfile }: NavRailProps) {
                         : "text-sidebar-foreground/70 hover:bg-accent hover:text-accent-foreground"
                     )}
                   >
-                    <Icon className="size-5" />
+                    {hasIcon ? (
+                      <Icon className="size-5" fill="currentColor" strokeWidth={2.2} />
+                    ) : (
+                      <Icon className="size-5" />
+                    )}
                     <span className="w-full truncate text-center whitespace-nowrap">{item.label}</span>
                     {"badge" in item && (
                       <span className="absolute top-1.5 right-2 size-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -183,7 +188,8 @@ export function MobileMenuDrawer({
           <div className="space-y-1">
             {NAV_ITEMS.map((item) => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-              const Icon = "icon" in item ? item.icon : JarvisLogo;
+              const hasIcon = "icon" in item;
+              const Icon = hasIcon ? item.icon : JarvisLogo;
               return (
                 <SheetClose asChild key={item.href}>
                   <Link
@@ -196,7 +202,11 @@ export function MobileMenuDrawer({
                     )}
                   >
                     <div className="flex items-center gap-3">
-                      <Icon className="size-5" />
+                      {hasIcon ? (
+                        <Icon className="size-5" fill="currentColor" strokeWidth={2.2} />
+                      ) : (
+                        <Icon className="size-5" />
+                      )}
                       <span>{item.label}</span>
                     </div>
                     {"badge" in item && (
