@@ -104,8 +104,8 @@ export function SourceCards({ sources, bare }: { sources: SourceRef[]; bare?: bo
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {list.map((s, i) => {
           const titleLine = s.title || "Web source";
-          /* second row: ONLY the website (domain.com) — never the long redirect URL path */
-          const subLine = s.domain || null;
+          /* website shown exactly ONCE: as subline only when it differs from the bold line */
+          const subLine = s.domain && s.domain !== titleLine ? s.domain : null;
           return (
             <a
               key={`${s.url}-${i}`}

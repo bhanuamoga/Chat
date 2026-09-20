@@ -148,6 +148,9 @@ export function MobileMenuDrawer({
   const pathname = usePathname();
   const { setTheme, resolvedTheme } = useMode();
   const isDark = resolvedTheme === "dark";
+  /* Fallback: when the parent gives no handler (e.g. Jarvis page), own the dialog ourselves */
+  const [showOwnProfile, setShowOwnProfile] = useState(false);
+  const openProfile = () => (onOpenProfile ? onOpenProfile() : setShowOwnProfile(true));
 
   const handleLogout = () => {
     signOut({ callbackUrl: "/" });
@@ -234,7 +237,7 @@ export function MobileMenuDrawer({
         <div className="border-t border-sidebar-border p-3 space-y-2">
           {user && (
             <button
-              onClick={onOpenProfile}
+              onClick={openProfile}
               className="flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-accent/60 transition-colors"
               title="Click to edit profile"
             >
@@ -256,6 +259,14 @@ export function MobileMenuDrawer({
           </Button>
         </div>
       </SheetContent>
+      {user && !onOpenProfile && (
+        <ProfileDialog
+          open={showOwnProfile}
+          onOpenChange={setShowOwnProfile}
+          me={user}
+          onSaved={() => setShowOwnProfile(false)}
+        />
+      )}
     </Sheet>
   );
 }
