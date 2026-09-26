@@ -18,7 +18,6 @@ import {
   KeyRound,
   Loader2,
   SquarePlus,
-  Sparkles,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -239,10 +238,7 @@ export function VercelLabsClient() {
                               <FlaskConical className="size-3 text-primary" /> Building interface…
                             </div>
                           ) : s.kind === "ui" ? (
-                            <div key={`${i}-${j}`} className="rounded-xl border border-border/60 bg-card/60 p-3.5 animate-in fade-in zoom-in-95 duration-300">
-                              <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                <Sparkles className="size-3 text-primary" /> json-render → shadcn
-                              </p>
+                            <div key={`${i}-${j}`} className="mt-1 animate-in fade-in zoom-in-95 duration-300">
                               <JsonRender
                                 spec={s.spec}
                                 onSend={(text) => sendMessage({ text })}

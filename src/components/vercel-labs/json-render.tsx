@@ -418,8 +418,8 @@ const RENDERERS: Record<string, Renderer> = {
   table: (n, k) => {
     const head: string[] = Array.isArray(n.props?.head) ? (n.props!.head as string[]) : [];
     return (
-      <div className="overflow-hidden rounded-lg border border-border/70">
-        <table className="w-full text-[12.5px]">
+      <div className="max-w-full overflow-x-auto rounded-lg border border-border/70">
+        <table className="w-max min-w-full text-[12.5px]">
           {head.length > 0 && (
             <thead>
               <tr className="bg-muted/50">
@@ -437,8 +437,8 @@ const RENDERERS: Record<string, Renderer> = {
     );
   },
   tr: (_, k) => <tr className="border-t border-border/50">{k}</tr>,
-  td: (n) => <td className="px-3 py-1.5">{n.text}</td>,
-  th: (n) => <th className="px-3 py-1.5 text-left font-semibold">{n.text}</th>,
+  td: (n) => <td className="whitespace-nowrap px-3 py-1.5">{n.text}</td>,
+  th: (n) => <th className="whitespace-nowrap px-3 py-1.5 text-left font-semibold">{n.text}</th>,
 
   tabs: (n) => {
     const tabs = Array.isArray(n.props?.tabs) ? (n.props!.tabs as { label: string; content: SpecNode }[]) : [];
