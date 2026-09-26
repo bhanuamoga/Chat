@@ -246,9 +246,7 @@ export function VercelLabsClient() {
                       if (p.type === "text" && p.text) {
                         const segs = splitRenderSegments(p.text);
                         return segs.map((s, j) =>
-                          s.kind === "ui-pending" ? (
-                            <ThinkingLine key={`${i}-${j}`} />
-                          ) : s.kind === "ui" ? (
+                          s.kind === "ui-pending" ? null : s.kind === "ui" ? (
                             <div key={`${i}-${j}`} className="mt-1 animate-in fade-in zoom-in-95 duration-300">
                               <JsonRender
                                 spec={s.spec}
@@ -266,7 +264,8 @@ export function VercelLabsClient() {
                 </div>
               ))}
 
-              {generating && (
+              {/* single live thinking indicator — until the first token arrives, never while streaming */}
+              {status === "submitted" && messages.at(-1)?.role === "user" && (
                 <div className="py-3">
                   <ThinkingLine />
                 </div>
