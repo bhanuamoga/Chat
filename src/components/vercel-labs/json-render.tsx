@@ -26,6 +26,17 @@ import {
   AreaChart,
   LineChart,
   ComposedChart,
+  PieChart,
+  Pie,
+  RadialBarChart,
+  RadialBar,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  RadarChart,
+  Radar,
+  ScatterChart,
+  Scatter,
   CartesianGrid,
   XAxis,
   YAxis,
@@ -131,7 +142,111 @@ function ChartNode({ node, uid }: { node: SpecNode; uid: string }) {
   );
 
   let chart: React.ReactNode = null;
-  if (kind === "area") {
+  if (kind === "pie" || kind === "donut") {
+    const valueKey = numericKeys[0];
+    const total = data.reduce((s, r) => s + (Number(r[valueKey]) || 0), 0);
+    chart = (
+      <PieChart>
+        <Pie
+          data={data}
+          dataKey={valueKey}
+          nameKey={xKey}
+          cx="50%"
+          cy="50%"
+          innerRadius={kind === "donut" ? "55%" : 0}
+          outerRadius="72%"
+          paddingAngle={2}
+          stroke="none"
+        >
+          {data.map((_, i) => (
+            <Cell key={i} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+          ))}
+        </Pie>
+        {kind === "donut" && (
+          <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" style={{ fill: "var(--foreground)", fontSize: 14, fontWeight: 700 }}>
+            {total.toLocaleString()}
+          </text>
+        )}
+        <RechartsTooltip content={<ChartTip />} />
+        <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />
+      </PieChart>
+    );
+  } else if (kind === "radial") {
+    const valueKey = numericKeys[0];
+    chart = (
+      <RadialBarChart cx="50%" cy="50%" innerRadius="30%" outerRadius="95%" barSize={12} data={data}>
+        <RadialBar dataKey={valueKey} cornerRadius={8} background={{ fill: "color-mix(in srgb, var(--muted) 60%, transparent)" }}>
+          {data.map((_, i) => (
+            <Cell key={i} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+          ))}
+        </RadialBar>
+        {tip}
+        <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} layout="vertical" verticalAlign="middle" align="right" />
+      </RadialBarChart>
+    );
+  } else if (kind === "gauge") {
+    /* { value: 0-100, label? } — single circular progress gauge with center text */
+    const value = Math.max(0, Math.min(100, Number(p.value ?? (data[0]?.[numericKeys[0]] as number) ?? 0)));
+    const label = str(p.label, `${value}%`);
+    chart = (
+      <RadialBarChart cx="50%" cy="50%" innerRadius="62%" outerRadius="92%" startAngle={90} endAngle={-270} barSize={14} data={[{ v: 100 }, { v: value }]}>
+        <RadialBar dataKey="v" cornerRadius={10}>
+          <Cell fill="color-mix(in srgb, var(--muted) 55%, transparent)" />
+          <Cell fill="var(--chart-2)" />
+        </RadialBar>
+        <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle" style={{ fill: "var(--foreground)", fontSize: 16, fontWeight: 700 }}>
+          {label}
+        </text>
+      </RadialBarChart>
+    );
+  } else if (kind === "radar") {
+    chart = (
+      <RadarChart cx="50%" cy="50%" outerRadius="72%" data={data}>
+        <PolarGrid stroke="color-mix(in srgb, var(--muted-foreground) 20%, transparent)" />
+        <PolarAngleAxis dataKey={xKey} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+        <PolarRadiusAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} />
+        {numericKeys.map((k, i) => (
+          <Radar key={k} dataKey={k} stroke={CHART_PALETTE[i % CHART_PALETTE.length]} fill={CHART_PALETTE[i % CHART_PALETTE.length]} fillOpacity={0.3} strokeWidth={2} />
+        ))}
+        {tip}
+        {legend}
+      </RadarChart>
+    );
+  } else if (kind === "scatter") {
+    /* rows { x, y } (or numeric series in `lines` style) — one scatter cloud per numeric series after x */
+    const yKeys = numericKeys.filter((k) => k !== "x");
+    const xk = "x";
+    chart = (
+      <ScatterChart margin={{ top: 8, bottom: 8 }}>
+        {grid}
+        <XAxis dataKey={xk} type="number" {...axis} />
+        <YAxis type="number" {...axis} width={44} />
+        {tip}
+        {yKeys.map((k, i) => (
+          <Scatter key={k} name={k} data={data} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+        ))}
+        {yKeys.length > 1 ? <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} /> : null}
+      </ScatterChart>
+    );
+  } else if (kind === "gantt") {
+    /* rows { task, start, duration } — horizontal stacked bars */
+    const startBar = "start" in data[0] ? "start" : xKey;
+    const durBar = "duration" in data[0] ? "duration" : numericKeys[numericKeys.length - 1];
+    chart = (
+      <BarChart data={data} layout="vertical" margin={{ top: 8, left: 8, right: 8 }}>
+        <CartesianGrid strokeDasharray="3 3" opacity={0.12} horizontal={false} />
+        <XAxis type="number" {...axis} />
+        <YAxis dataKey="task" type="category" width={96} {...axis} />
+        {tip}
+        <Bar dataKey={startBar} stackId="g" fill="transparent" />
+        <Bar dataKey={durBar} stackId="g" radius={[0, 8, 8, 0]} maxBarSize={18}>
+          {data.map((_, i) => (
+            <Cell key={i} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+          ))}
+        </Bar>
+      </BarChart>
+    );
+  } else if (kind === "area") {
     chart = (
       <AreaChart data={data} margin={{ top: 8 }}>
         {defs(numericKeys.length, "a", [0.35, 0.03])}

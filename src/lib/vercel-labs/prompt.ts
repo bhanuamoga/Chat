@@ -40,10 +40,17 @@ SpecNode = { "type": string, "text"?: string, "children"?: (string | SpecNode)[]
 - "td"/"th" { text }
 - "tabs" { props: { tabs: { label: string, content: SpecNode }[] } }
 - "skeleton" { props: { className?: string } }
-- "chart" { props: { kind?: "bar"|"area"|"line"|"mixed", xKey?: string, data: object[], bars?: string[], lines?: string[] } }
-  Recharts-backed. data rows: [{ name: "Jan", revenue: 420, target: 400 }, …]; numeric keys become series
-  (numeric keys are bar series for kind "bar"/"area"/"line"; for "mixed", use bars[] and lines[] with keys from the rows).
-  bars alone: each block gets its own theme color. Keep data to 4-8 rows, values plain numbers.
+- "chart" { props: { kind?: "bar"|"area"|"line"|"mixed"|"pie"|"donut"|"radial"|"gauge"|"radar"|"scatter"|"gantt", xKey?: string, data: object[], bars?: string[], lines?: string[], value?: number, label?: string } }
+  Recharts-backed chart of any of these kinds:
+    bar / area / line: rows [{ name|"Jan", revenue:420, target:400 }]; numeric keys = series.
+    mixed: bars[] and lines[] name series keys from the rows.
+    pie / donut: rows of names + one numeric value key; donut shows total in the center.
+    radial: name + value rows → radial progress bars.
+    gauge: props { value: 0-100, label? } circular gauge.
+    radar: name + numeric metrics rows.
+    scatter: rows { x: number, y: number } (multiple y-series via extra numeric keys).
+    gantt: rows { task: name, start: number, duration: number } horizontal timeline.
+  Theme colors come from var(--chart-1..5) — never hardcode colors. 4-8 rows, plain numbers.
 - "statChart" { props: { k: string, v: string, hint?: string, values?: number[] } } stat card with sparkline;
 
 # Rules

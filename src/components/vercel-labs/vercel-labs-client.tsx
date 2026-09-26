@@ -42,6 +42,26 @@ function Mdx({ text }: { text: string }) {
   );
 }
 
+/** elegant working/thinking indicator — flask pulse + shimmering text + elapsed seconds */
+function ThinkingLine() {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setSecs((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <span className="relative flex size-4 items-center justify-center">
+        <FlaskConical className="size-3.5 animate-pulse text-primary" />
+        <span className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
+      </span>
+      <span className="bg-gradient-to-r from-muted-foreground via-foreground/70 to-muted-foreground bg-[length:200%_100%] bg-clip-text text-[13.5px] font-medium text-transparent animate-[shimmer_2s_linear_infinite]">
+        Thinking… {secs > 0 && <span className="tabular-nums text-muted-foreground/60">{secs}s</span>}
+      </span>
+    </div>
+  );
+}
+
 export function VercelLabsClient() {
   const [config, setConfig] = useState<AiApisClientConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
@@ -223,20 +243,11 @@ export function VercelLabsClient() {
                   </div>
                   <div className="w-full space-y-3">
                     {m.parts.map((p, i) => {
-                      if (p.type === "reasoning") {
-                        return (
-                          <p key={i} className="nice-scroll max-h-40 overflow-y-auto whitespace-pre-wrap border-l-2 border-border/70 pl-3 text-[13px] italic leading-relaxed text-muted-foreground/80">
-                            {p.text}
-                          </p>
-                        );
-                      }
                       if (p.type === "text" && p.text) {
                         const segs = splitRenderSegments(p.text);
                         return segs.map((s, j) =>
                           s.kind === "ui-pending" ? (
-                            <div key={`${i}-${j}`} className="flex items-center gap-1.5 rounded-lg border border-dashed border-border/80 bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground animate-pulse">
-                              <FlaskConical className="size-3 text-primary" /> Building interface…
-                            </div>
+                            <ThinkingLine key={`${i}-${j}`} />
                           ) : s.kind === "ui" ? (
                             <div key={`${i}-${j}`} className="mt-1 animate-in fade-in zoom-in-95 duration-300">
                               <JsonRender
@@ -257,10 +268,7 @@ export function VercelLabsClient() {
 
               {generating && (
                 <div className="py-3">
-                  <div className="flex items-center gap-1.5 text-[13.5px] font-medium text-muted-foreground">
-                    <FlaskConical className="size-3.5 animate-pulse text-primary" />
-                    <span>{status === "submitted" ? "Thinking…" : "Streaming…"}</span>
-                  </div>
+                  <ThinkingLine />
                 </div>
               )}
               {error && (

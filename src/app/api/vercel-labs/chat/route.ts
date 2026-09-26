@@ -80,5 +80,5 @@ export async function POST(req: NextRequest) {
       : {}),
   });
 
-  return result.toUIMessageStreamResponse({ sendReasoning: true });
+  return result.toUIMessageStreamResponse();
 }
