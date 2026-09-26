@@ -23,7 +23,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ChatTextarea } from "@/components/ui/chat-textarea";
-import { JsonRender, splitRenderSegments } from "@/components/vercel-labs/json-render";
+import { LabsRenderer, parseLabsOutput } from "@/components/vercel-labs/labs-renderer";
 import { cn } from "@/lib/utils";
 import type { AiApisClientConfig } from "@/lib/types";
 
@@ -243,22 +243,23 @@ export function VercelLabsClient() {
                   </div>
                   <div className="w-full space-y-3">
                     {m.parts.map((p, i) => {
-                      if (p.type === "text" && p.text) {
-                        const segs = splitRenderSegments(p.text);
-                        return segs.map((s, j) =>
-                          s.kind === "ui-pending" ? null : s.kind === "ui" ? (
-                            <div key={`${i}-${j}`} className="mt-1 animate-in fade-in zoom-in-95 duration-300">
-                              <JsonRender
-                                spec={s.spec}
+                      if (p.type !== "text" || !p.text) return null;
+                      const { lead, tail, spec, streaming } = parseLabsOutput(p.text);
+                      return (
+                        <div key={i} className="space-y-3">
+                          {lead.trim() ? <Mdx text={lead} /> : null}
+                          {spec ? (
+                            <div className="animate-in fade-in zoom-in-95 duration-300">
+                              <LabsRenderer
+                                spec={spec}
+                                loading={streaming}
                                 onSend={(text) => sendMessage({ text })}
                               />
                             </div>
-                          ) : (
-                            <Mdx key={`${i}-${j}`} text={s.content} />
-                          )
-                        );
-                      }
-                      return null;
+                          ) : null}
+                          {tail.trim() ? <Mdx text={tail} /> : null}
+                        </div>
+                      );
                     })}
                   </div>
                 </div>
