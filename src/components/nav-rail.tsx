@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { LogOut, MessageSquare, Users, Menu, Moon, Sun, KeyRound } from "lucide-react";
+import { LogOut, MessageSquare, Users, Menu, Moon, Sun, KeyRound, FlaskConical } from "lucide-react";
 import { JarvisLogo } from "@/components/jarvis-logo";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { href: "/groups", label: "Group Chat", icon: Users },
   { href: "/natural", label: "Jarvis", badge: "AI" },
   { href: "/ai-apis", label: "AI APIs", icon: KeyRound },
+  { href: "/vercel-labs", label: "Vercel Labs", icon: FlaskConical },
 ] as const;
 
 interface NavRailProps {
