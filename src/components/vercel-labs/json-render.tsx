@@ -20,6 +20,22 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  ResponsiveContainer,
+  BarChart,
+  AreaChart,
+  LineChart,
+  ComposedChart,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+  Legend,
+  Bar,
+  Area,
+  Line,
+  Cell,
+} from "recharts";
 import { cn } from "@/lib/utils";
 
 /* --------------------------------------------------------------- types */
@@ -37,6 +53,7 @@ type FormCtx = {
   values: Record<string, unknown>;
   setValue: (field: string, value: unknown) => void;
   send: (template: string) => void;
+  uid: string;
 };
 
 const Ctx = createContext<FormCtx | null>(null);
@@ -48,6 +65,176 @@ const str = (v: unknown, fb = ""): string => (typeof v === "string" ? v : v == n
 
 const interpolate = (template: string, values: Record<string, unknown>) =>
   template.replace(/\{\{(\w+)\}\}/g, (_, k) => str(values[k]));
+
+const CHART_PALETTE = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+];
+
+function ChartTip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="min-w-[110px] rounded-xl border border-border/80 bg-card/95 px-3 py-2 shadow-xl backdrop-blur-sm">
+      {label != null && (
+        <p className="mb-1 truncate text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{String(label)}</p>
+      )}
+      <div className="space-y-1">
+        {payload.map((e: any, i: number) => (
+          <div key={i} className="flex items-center justify-between gap-4 text-xs">
+            <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+              <span className="size-2 shrink-0 rounded-full" style={{ background: e.stroke || e.color || e.payload?.fill || "var(--chart-1)" }} />
+              <span className="truncate">{String(e.name ?? "")}</span>
+            </span>
+            <span className="shrink-0 font-semibold tabular-nums text-foreground">
+              {typeof e.value === "number" ? e.value.toLocaleString() : String(e.value)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** "chart" node — Recharts-backed, kinds: bar | area | line | mixed (bars+lines) */
+function ChartNode({ node, uid }: { node: SpecNode; uid: string }) {
+  const p = node.props || {};
+  const kind = str(p.kind, "bar");
+  const gid = `${uid}-g`;
+  const data = (Array.isArray(p.data) ? p.data : []) as Record<string, unknown>[];
+  const xKey = str(p.xKey, "name");
+  if (!data.length) {
+    return <Skeleton className="h-40 w-full rounded-lg" />;
+  }
+  const numericKeys = Object.keys(data[0]).filter((k) => k !== xKey && typeof data[0][k] === "number");
+  if (!numericKeys.length) return null;
+  const axis = {
+    tick: { fontSize: 11, fill: "var(--muted-foreground)" },
+    tickLine: false,
+    axisLine: { stroke: "color-mix(in srgb, var(--muted-foreground) 25%, transparent)" },
+    tickMargin: 6,
+  } as const;
+  const grid = <CartesianGrid strokeDasharray="3 3" opacity={0.12} vertical={false} />;
+  const tip = <RechartsTooltip content={<ChartTip />} cursor={{ fill: "color-mix(in srgb, var(--muted) 50%, transparent)" }} />;
+  const legend = numericKeys.length > 1 ? <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} /> : null;
+  const defs = (count: number, prefix: string, alpha: [number, number]) => (
+    <defs>
+      {Array.from({ length: count }).map((_, i) => (
+        <linearGradient key={i} id={`${gid}-${prefix}-${i}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={CHART_PALETTE[i % CHART_PALETTE.length]} stopOpacity={alpha[0]} />
+          <stop offset="100%" stopColor={CHART_PALETTE[i % CHART_PALETTE.length]} stopOpacity={alpha[1]} />
+        </linearGradient>
+      ))}
+    </defs>
+  );
+
+  let chart: React.ReactNode = null;
+  if (kind === "area") {
+    chart = (
+      <AreaChart data={data} margin={{ top: 8 }}>
+        {defs(numericKeys.length, "a", [0.35, 0.03])}
+        {grid}
+        <XAxis dataKey={xKey} {...axis} />
+        <YAxis {...axis} width={44} />
+        {tip}
+        {numericKeys.map((k, i) => (
+          <Area key={k} type="monotone" dataKey={k} stroke={CHART_PALETTE[i % CHART_PALETTE.length]} strokeWidth={2.25} dot={false} activeDot={{ r: 3.5 }} fill={`url(#${gid}-a-${i})`} />
+        ))}
+        {legend}
+      </AreaChart>
+    );
+  } else if (kind === "line") {
+    chart = (
+      <LineChart data={data} margin={{ top: 8 }}>
+        {grid}
+        <XAxis dataKey={xKey} {...axis} />
+        <YAxis {...axis} width={44} />
+        {tip}
+        {numericKeys.map((k, i) => (
+          <Line key={k} type="monotone" dataKey={k} stroke={CHART_PALETTE[i % CHART_PALETTE.length]} strokeWidth={2.5} dot={{ r: 2.5, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+        ))}
+        {legend}
+      </LineChart>
+    );
+  } else if (kind === "mixed") {
+    /* bars + lines in one ComposedChart */
+    const bars: string[] = Array.isArray(p.bars) && (p.bars as string[]).length ? (p.bars as string[]) : numericKeys.slice(0, 1);
+    const lines: string[] = Array.isArray(p.lines) && (p.lines as string[]).length ? (p.lines as string[]) : numericKeys.slice(1);
+    chart = (
+      <ComposedChart data={data} margin={{ top: 8 }}>
+        {defs(bars.length, "mb", [0.95, 0.6])}
+        {grid}
+        <XAxis dataKey={xKey} {...axis} />
+        <YAxis {...axis} width={44} />
+        {tip}
+        {bars.map((k, i) => (
+          <Bar key={k} dataKey={k} fill={`url(#${gid}-mb-${i})`} radius={[8, 8, 0, 0]} maxBarSize={44} />
+        ))}
+        {lines.map((k, i) => (
+          <Line key={k} type="monotone" dataKey={k} stroke={CHART_PALETTE[(bars.length + i) % CHART_PALETTE.length]} strokeWidth={2.5} dot={{ r: 2.5, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+        ))}
+        {bars.length + lines.length > 1 ? <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} /> : null}
+      </ComposedChart>
+    );
+  } else {
+    /* bar (default): single series -> per-BLOCK chart-1..5 */
+    chart = (
+      <BarChart data={data} margin={{ top: 8 }}>
+        {defs(numericKeys.length === 1 ? data.length : numericKeys.length, "b", [0.95, 0.6])}
+        {grid}
+        <XAxis dataKey={xKey} {...axis} />
+        <YAxis {...axis} width={44} />
+        {tip}
+        {numericKeys.map((k, i) =>
+          numericKeys.length === 1 ? (
+            <Bar key={k} dataKey={k} radius={[8, 8, 0, 0]} maxBarSize={52}>
+              {data.map((_, bi) => (
+                <Cell key={bi} fill={`url(#${gid}-b-${bi})`} />
+              ))}
+            </Bar>
+          ) : (
+            <Bar key={k} dataKey={k} fill={`url(#${gid}-b-${i})`} radius={[8, 8, 0, 0]} maxBarSize={44} />
+          )
+        )}
+        {legend}
+      </BarChart>
+    );
+  }
+  return (
+    <div className="w-full pt-1" style={{ height: 256 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        {chart as React.ReactElement}
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/** "statChart" — stat card with a mini sparkline behind the value */
+function StatChartNode({ node }: { node: SpecNode }) {
+  const p = node.props || {};
+  const values = (Array.isArray(p.values) ? (p.values as number[]) : []) as number[];
+  const data = values.map((v, i) => ({ i, v }));
+  return (
+    <Card className="gap-0 overflow-hidden py-3 shadow-2xs">
+      <CardContent className="px-4 pb-1">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{str(p.k)}</p>
+        <p className="text-lg font-bold tracking-tight">{str(p.v)}</p>
+        {!!p.hint && <p className="text-[10px] text-muted-foreground/80">{str(p.hint)}</p>}
+      </CardContent>
+      {data.length > 1 && (
+        <div className="h-10 w-full px-1">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={data} margin={{ top: 2, bottom: 0, left: 0, right: 0 }}>
+              <Area type="monotone" dataKey="v" stroke="var(--chart-2)" strokeWidth={2} dot={false} fill="var(--chart-2)" fillOpacity={0.25} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 function Node({ n, idx }: { n: string | SpecNode; idx?: number }) {
   if (typeof n === "string") return <span key={idx}>{n}</span>;
@@ -278,6 +465,11 @@ const RENDERERS: Record<string, Renderer> = {
 };
 
 function SpecNodeRenderer({ node }: { node: SpecNode }) {
+  if (node.type === "chart") {
+    const ctx = useFormCtx();
+    return <ChartNode node={node} uid={ctx?.uid || "jr0"} />;
+  }
+  if (node.type === "statChart") return <StatChartNode node={node} />;
   const render = RENDERERS[node.type];
   if (!render) {
     return (
@@ -296,8 +488,10 @@ function SpecNodeRenderer({ node }: { node: SpecNode }) {
 /** Render a parsed UiSpec. `onSend(text)` pipes button actions back into the chat. */
 export function JsonRender({ spec, onSend }: { spec: UiSpec; onSend?: (text: string) => void }) {
   const [values, setValues] = useState<Record<string, unknown>>({});
+  const uid = React.useRef(`jr${Math.random().toString(36).slice(2, 8)}`).current;
   const ctx = useMemo<FormCtx>(
     () => ({
+      uid,
       values,
       setValue: (field, value) => setValues((v) => ({ ...v, [field]: value })),
       send: (template) => {
@@ -320,7 +514,34 @@ export function JsonRender({ spec, onSend }: { spec: UiSpec; onSend?: (text: str
  * Split assistant text into markdown segments and jsonrender specs:
  * [{ kind: "text", content }, { kind: "ui", spec }]
  */
-export function splitRenderSegments(text: string): ({ kind: "text"; content: string } | { kind: "ui"; spec: UiSpec })[] {
+export type RenderSegment =
+  | { kind: "text"; content: string }
+  | { kind: "ui"; spec: UiSpec }
+  | { kind: "ui-pending" };
+
+export function splitRenderSegments(text: string): RenderSegment[] {
+  /* UNCLOSED fence (still streaming) — never flash raw JSON: hide it, show a pending chip */
+  const openMatch = text.match(/```jsonrender\s*$/i) || text.match(/```jsonrender\s*[\s\S]+$/i);
+  const closed = /```jsonrender\s*([\s\S]*?)\s*```/.test(text);
+  if (!closed) {
+    const openIdx = text.search(/```jsonrender\s*$/i);
+    if (openIdx >= 0) {
+      const before = text.slice(0, openIdx).trim();
+      const out: RenderSegment[] = [];
+      if (before) out.push({ kind: "text", content: before });
+      out.push({ kind: "ui-pending" });
+      return out;
+    }
+    const openIdx2 = text.indexOf("```jsonrender");
+    if (openIdx2 >= 0 && !closed) {
+      const before = text.slice(0, openIdx2).trim();
+      const out: RenderSegment[] = [];
+      if (before) out.push({ kind: "text", content: before });
+      out.push({ kind: "ui-pending" });
+      return out;
+    }
+    return [{ kind: "text", content: text }];
+  }
   const fence = /```jsonrender\s*([\s\S]*?)\s*```/;
   const match = text.match(fence);
   if (!match) return [{ kind: "text", content: text }];

@@ -13,17 +13,17 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   AlertTriangle,
+  ArrowUp,
   FlaskConical,
   KeyRound,
   Loader2,
-  Send,
   SquarePlus,
   Sparkles,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { ChatTextarea } from "@/components/ui/chat-textarea";
 import { JsonRender, splitRenderSegments } from "@/components/vercel-labs/json-render";
 import { cn } from "@/lib/utils";
 import type { AiApisClientConfig } from "@/lib/types";
@@ -137,23 +137,6 @@ export function VercelLabsClient() {
             AI SDK 7 · json-render → shadcn
           </p>
         </div>
-        {options.length > 0 && (
-          <select
-            value={`${sel.entryId}|${sel.model}`}
-            onChange={(e) => {
-              const [entryId, model] = e.target.value.split("|");
-              saveSel({ entryId, model });
-            }}
-            className="h-8 max-w-[180px] rounded-md border border-input bg-background px-2 text-[11px] shadow-2xs outline-none sm:max-w-[280px]"
-            title="Model (shared with your AI APIs keys)"
-          >
-            {options.map((o) => (
-              <option key={`${o.entryId}|${o.model}`} value={`${o.entryId}|${o.model}`}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        )}
         <Button
           variant="outline"
           size="sm"
@@ -251,7 +234,11 @@ export function VercelLabsClient() {
                       if (p.type === "text" && p.text) {
                         const segs = splitRenderSegments(p.text);
                         return segs.map((s, j) =>
-                          s.kind === "ui" ? (
+                          s.kind === "ui-pending" ? (
+                            <div key={`${i}-${j}`} className="flex items-center gap-1.5 rounded-lg border border-dashed border-border/80 bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground animate-pulse">
+                              <FlaskConical className="size-3 text-primary" /> Building interface…
+                            </div>
+                          ) : s.kind === "ui" ? (
                             <div key={`${i}-${j}`} className="rounded-xl border border-border/60 bg-card/60 p-3.5 animate-in fade-in zoom-in-95 duration-300">
                               <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                                 <Sparkles className="size-3 text-primary" /> json-render → shadcn
@@ -276,7 +263,6 @@ export function VercelLabsClient() {
                 <div className="py-3">
                   <div className="flex items-center gap-1.5 text-[13.5px] font-medium text-muted-foreground">
                     <FlaskConical className="size-3.5 animate-pulse text-primary" />
-                    <Sparkles className="size-3 text-primary" />
                     <span>{status === "submitted" ? "Thinking…" : "Streaming…"}</span>
                   </div>
                 </div>
@@ -292,11 +278,13 @@ export function VercelLabsClient() {
         )}
       </div>
 
-      {/* composer */}
+      {/* composer — same face as Jarvis: rounded container, model menu bottom-left, arrow send */}
       <div className="shrink-0 px-3 pb-3 pt-1 sm:px-4 sm:pb-4">
         <div className="mx-auto max-w-3xl">
-          <div className="flex items-end gap-2 rounded-2xl border border-border bg-card px-2 py-2 shadow-xs focus-within:border-primary/50">
-            <Textarea
+          <div className="flex flex-col rounded-2xl bg-muted/50 border border-border/80 px-3 pt-2.5 pb-1.5 shadow-sm transition-all focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20">
+            <ChatTextarea
+              minHeight={52}
+              maxHeight={200}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -306,22 +294,46 @@ export function VercelLabsClient() {
                 }
               }}
               placeholder={sel.model ? `Message ${prettyModel(sel.model)}…` : "Add an API key first…"}
-              rows={1}
-              className="max-h-40 min-h-10 flex-1 resize-none border-0 bg-transparent px-1 py-2 shadow-none focus-visible:ring-0"
+              className="w-full text-sm placeholder:text-muted-foreground/60"
             />
-            {generating ? (
-              <Button size="icon" variant="ghost" className="size-9 shrink-0 rounded-full" onClick={() => stop()} title="Stop">
-                <SquarePlus className="size-4 rotate-45" />
+            <div className="mt-1 flex items-center justify-between gap-2">
+              {options.length > 0 ? (
+                <div className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+                  <FlaskConical className="size-3.5 shrink-0 text-primary" />
+                  <select
+                    value={`${sel.entryId}|${sel.model}`}
+                    onChange={(e) => {
+                      const [entryId, model] = e.target.value.split("|");
+                      saveSel({ entryId, model });
+                    }}
+                    className="max-w-[150px] cursor-pointer bg-transparent outline-none sm:max-w-[220px]"
+                    title="Model (shared with your AI APIs keys)"
+                  >
+                    {options.map((o) => (
+                      <option key={`${o.entryId}|${o.model}`} value={`${o.entryId}|${o.model}`} className="bg-card text-foreground">
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <span />
+              )}
+              <Button
+                size="icon"
+                onClick={generating ? () => stop() : send}
+                disabled={!generating && (!input.trim() || !sel.model)}
+                className="size-9 shrink-0 rounded-xl shadow-sm transition-transform active:scale-95"
+                aria-label={generating ? "Stop" : "Send message"}
+              >
+                {generating ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <ArrowUp className="size-4" />
+                )}
               </Button>
-            ) : (
-              <Button size="icon" className="size-9 shrink-0 rounded-full" onClick={send} disabled={!input.trim() || !sel.model}>
-                <Send className="size-4" />
-              </Button>
-            )}
+            </div>
           </div>
-          <p className="mt-1.5 text-center text-[10px] text-muted-foreground/80">
-            Vercel Labs · AI SDK 7 + json-render core · keys shared with AI APIs · <a href="/natural" className="underline">Jarvis</a>
-          </p>
         </div>
       </div>
     </div>

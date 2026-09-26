@@ -40,6 +40,11 @@ SpecNode = { "type": string, "text"?: string, "children"?: (string | SpecNode)[]
 - "td"/"th" { text }
 - "tabs" { props: { tabs: { label: string, content: SpecNode }[] } }
 - "skeleton" { props: { className?: string } }
+- "chart" { props: { kind?: "bar"|"area"|"line"|"mixed", xKey?: string, data: object[], bars?: string[], lines?: string[] } }
+  Recharts-backed. data rows: [{ name: "Jan", revenue: 420, target: 400 }, …]; numeric keys become series
+  (numeric keys are bar series for kind "bar"/"area"/"line"; for "mixed", use bars[] and lines[] with keys from the rows).
+  bars alone: each block gets its own theme color. Keep data to 4-8 rows, values plain numbers.
+- "statChart" { props: { k: string, v: string, hint?: string, values?: number[] } } stat card with sparkline;
 
 # Rules
 1. Use jsonrender ONLY when structured UI genuinely helps (forms, surveys, dashboards, comparisons,
