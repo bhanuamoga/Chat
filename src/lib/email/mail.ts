@@ -76,7 +76,7 @@ export interface SyncedEmail {
   isRead: boolean;
   isStarred: boolean;
   hasAttachments: boolean;
-  attachments: { filename: string; size?: number; mime?: string }[];
+  attachments: { filename: string; size?: number; mime?: string; path?: string | null; content?: Buffer | null }[];
 }
 
 export interface SyncResult {
@@ -154,7 +154,13 @@ async function parseRaw(
     hasAttachments: (parsed.attachments?.length ?? 0) > 0,
     attachments: (parsed.attachments ?? [])
       .filter((x) => x.filename)
-      .map((x) => ({ filename: x.filename as string, size: x.size, mime: x.contentType })),
+      .map((x) => ({
+        filename: x.filename as string,
+        size: x.size,
+        mime: x.contentType,
+        path: null as string | null,
+        content: (x.content as Buffer) ?? null,
+      })),
   };
 }
 
@@ -175,6 +181,18 @@ export interface BoxSyncProgress {
   path?: string;
   fetched?: number;
   total?: number;
+  newsCount?: number;
+}
+
+export interface FlagUpdate {
+  messageId: string;
+  isRead: boolean;
+  isStarred: boolean;
+}
+
+export interface SyncOutcome {
+  rows: SyncedEmail[];
+  flagUpdates: FlagUpdate[];
 }
 
 /** Resolve a mailbox path by special-use flag, falling back to Gmail names. */
@@ -191,11 +209,19 @@ function resolveBoxes(clientBoxes: Awaited<ReturnType<ImapFlow["list"]>>): Map<S
   return map;
 }
 
-/** Fetch the newest messages from every mailbox of the account, with progress. */
+/**
+ * Smart incremental sync:
+ *  1. HEADERS pass per mailbox (envelopes + flags only — cheap).
+ *  2. Anything whose Message-ID we already have is {flag-synced} ONLY (no re-download
+ *     of bodies — "already synced" messages are never re-downloaded, the root cause of
+ *     the slow/stuck syncs is gone).
+ *  3. Only brand-new messages get their full source fetched + parsed.
+ */
 export async function syncAccount(
   account: EmailAccount,
+  known: Map<string, { isRead: boolean; isStarred: boolean }>,
   onProgress?: (p: BoxSyncProgress) => void,
-): Promise<SyncedEmail[]> {
+): Promise<SyncOutcome> {
   const client = makeClient(account);
   onProgress?.({ phase: "connect", folder: "inbox" });
   await client.connect();
@@ -208,6 +234,7 @@ export async function syncAccount(
     }
 
     const out: SyncedEmail[] = [];
+    const flagUpdates: FlagUpdate[] = [];
     for (const [folder, path] of boxes) {
       onProgress?.({ phase: "box", folder, path });
       try {
@@ -216,20 +243,55 @@ export async function syncAccount(
           const mailbox = await client.mailboxOpen(path, { readOnly: true });
           const total = mailbox.exists || 0;
           onProgress?.({ phase: "box", folder, path, fetched: 0, total });
-          if (total) {
-            const from = Math.max(1, total - SYNC_LIMIT_PER_BOX + 1);
-            let fetched = 0;
-            for await (const msg of client.fetch(`${from}:${total}`, { envelope: true, source: true, flags: true })) {
-              fetched += 1;
-              if (msg.source) {
-                try {
-                  out.push(await parseRaw(msg.source, folder, msg.flags, msg.uid));
-                } catch { /* one bad message shouldn't kill the sync */ }
-              }
-              if (fetched % 5 === 0 || fetched === total) {
-                onProgress?.({ phase: "box", folder, path, fetched, total });
+          if (!total) {
+            lock.release();
+            continue;
+          }
+          const from = Math.max(1, total - SYNC_LIMIT_PER_BOX + 1);
+
+          /* pass 1 — headers only */
+          interface Head {
+            uid: number;
+            id: string;
+            seen: boolean;
+            starred: boolean;
+          }
+          const heads: Head[] = [];
+          for await (const h of client.fetch(`${from}:${total}`, { envelope: true, flags: true })) {
+            const id = normId(String(h.envelope?.messageId || "")) || `local-${h.uid}-${folder}`;
+            heads.push({
+              uid: h.uid,
+              id,
+              seen: h.flags?.has("\Seen") ?? false,
+              starred: h.flags?.has("\Flagged") ?? false,
+            });
+          }
+
+          const fresh = heads.filter((h) => !known.has(h.id));
+          for (const h of heads) {
+            const prev = known.get(h.id);
+            if (prev && (prev.isRead !== h.seen || prev.isStarred !== h.starred)) {
+              flagUpdates.push({ messageId: h.id, isRead: h.seen, isStarred: h.starred });
+            }
+          }
+
+          /* pass 2 — bodies ONLY for the brand-new */
+          if (fresh.length) {
+            onProgress?.({ phase: "box", folder, path, fetched: 0, total: fresh.length, newsCount: fresh.length });
+            let received = 0;
+            const uidRanges = fresh.map((f) => f.uid).join(",");
+            for await (const msg of client.fetch(uidRanges, { envelope: true, source: true, flags: true }, { uid: true })) {
+              if (!msg.source) continue;
+              try {
+                out.push(await parseRaw(msg.source, folder, msg.flags, msg.uid));
+              } catch { /* one bad message shouldn't kill the sync */ }
+              received += 1;
+              if (received % 3 === 0 || received === fresh.length) {
+                onProgress?.({ phase: "box", folder, path, fetched: received, total: fresh.length, newsCount: fresh.length });
               }
             }
+          } else {
+            onProgress?.({ phase: "box", folder, path, fetched: total, total, newsCount: 0 });
           }
         } finally {
           lock.release();
@@ -237,7 +299,7 @@ export async function syncAccount(
       } catch { /* some servers deny listing some boxes; not fatal */ }
       onProgress?.({ phase: "box-done", folder, path });
     }
-    return out;
+    return { rows: out, flagUpdates };
   } finally {
     await client.logout().catch(() => undefined);
   }

@@ -16,6 +16,7 @@ import { ChatTextarea } from "@/components/ui/chat-textarea";
 import { cn } from "@/lib/utils";
 import type { EmailAccountClient, EmailMessage, EmailThreadRow } from "@/lib/email/types";
 import { colorFor } from "./email-client";
+import { AttachmentViewer, type AttachmentTarget } from "./attach-viewer";
 
 const initials = (m: EmailMessage) => (m.fromName || m.fromAddress || "?").slice(0, 1).toUpperCase();
 
@@ -68,11 +69,13 @@ function MessageCard({
   me,
   last,
   accountId,
+  onOpenAttachment,
 }: {
   m: EmailMessage;
   me: string;
   last: boolean;
   accountId: string;
+  onOpenAttachment: (t: AttachmentTarget) => void;
 }) {
   const mine = m.fromAddress.toLowerCase() === me.toLowerCase();
   return (
@@ -112,16 +115,24 @@ function MessageCard({
       {m.hasAttachments && m.attachments.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {m.attachments.map((a, i) => (
-            <a
+            <button
               key={i}
-              href={`/api/email/attachment?accountId=${accountId}&id=${encodeURIComponent(m.messageId)}&i=${i}`}
-              target="_blank"
-              rel="noopener noreferrer"
+              onClick={() =>
+                onOpenAttachment({
+                  emailRowId: m.id,
+                  accountId,
+                  messageId: m.messageId,
+                  index: i,
+                  filename: a.filename,
+                  mime: a.mime,
+                  size: a.size,
+                })
+              }
               className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               title={`Open ${a.filename}${a.size ? ` (${Math.round(a.size / 1024)} KB)` : ""}`}
             >
               <Paperclip className="size-3" /> {a.filename}
-            </a>
+            </button>
           ))}
         </div>
       )}
@@ -150,6 +161,7 @@ export function ThreadView({
   const [bcc, setBcc] = useState("");
   const [showCcBcc, setShowCcBcc] = useState(false);
   const [sending, setSending] = useState(false);
+  const [viewer, setViewer] = useState<AttachmentTarget | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -249,7 +261,14 @@ export function ThreadView({
         ) : (
           <div className="mx-auto w-full max-w-5xl space-y-4">
             {messages.map((m, i) => (
-              <MessageCard key={m.id} m={m} me={account.emailAddress} last={i === messages.length - 1} accountId={account.id} />
+              <MessageCard
+                key={m.id}
+                m={m}
+                me={account.emailAddress}
+                last={i === messages.length - 1}
+                accountId={account.id}
+                onOpenAttachment={setViewer}
+              />
             ))}
           </div>
         )}
@@ -301,6 +320,7 @@ export function ThreadView({
           </div>
         </div>
       )}
+      {viewer && <AttachmentViewer target={viewer} onClose={() => setViewer(null)} />}
     </div>
   );
 }

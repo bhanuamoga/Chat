@@ -1,15 +1,18 @@
 /**
- * GET /api/email/attachment?accountId=&id=<messageId>&i=<index>
- * Fetches an attachment live from Gmail over IMAP and streams it inline
- * (PDFs/images open in a tab, everything else downloads).
+ * GET /api/email/attachment?accountId=&id=<messageId>&i=<index>[&e=<emailRowId>]
+ * Prefers the bytes stored in the Supabase "email-attachments" bucket during
+ * sync (instant); falls back to fetching the message live from Gmail IMAP for
+ * older rows that have no stored path. Streams inline (PDFs/images open here).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { emailAccounts } from "@/db/schema";
+import { emailAccounts, emails } from "@/db/schema";
 import { auth } from "@/auth";
 import { ensureEmailSchema } from "@/lib/email/ddl";
 import { fetchAttachment } from "@/lib/email/mail";
+import { loadAttachment } from "@/lib/email/storage";
+import type { EmailAttachmentMeta } from "@/lib/email/types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -21,15 +24,49 @@ export async function GET(req: NextRequest) {
   await ensureEmailSchema();
 
   const q = req.nextUrl.searchParams;
+  const rowId = q.get("e") || "";
   const accountId = q.get("accountId") || "";
-  const messageId = q.get("id") || "";
+  let messageId = q.get("id") || "";
   const index = Math.max(0, Number(q.get("i")) || 0);
-  if (!accountId || !messageId) return NextResponse.json({ error: "accountId + id required" }, { status: 400 });
+  const dl = q.get("dl") === "1";
+
+  /* ---------- path 1: bytes parked in Supabase Storage during sync ---------- */
+  let meta: EmailAttachmentMeta | null = null;
+  let messageAccountId = accountId;
+  if (rowId) {
+    const [row] = await db
+      .select({ accountId: emails.accountId, messageId: emails.messageId, attachments: emails.attachments })
+      .from(emails)
+      .where(and(eq(emails.id, rowId), eq(emails.userId, userId)))
+      .limit(1);
+    if (!row) return NextResponse.json({ error: "Message not found" }, { status: 404 });
+    messageAccountId = row.accountId;
+    messageId = row.messageId;
+    const list = (row.attachments as EmailAttachmentMeta[]) ?? [];
+    meta = list[index] ?? null;
+    if (meta?.path) {
+      const stored = await loadAttachment(meta.path);
+      if (stored) {
+        return new Response(stored.bytes as unknown as BodyInit, {
+          headers: {
+            "Content-Type": meta.mime || "application/octet-stream",
+            "Content-Disposition": `${dl ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(meta.filename)}`,
+            "Cache-Control": "private, max-age=3600",
+          },
+        });
+      }
+      /* path missing in storage — fall through to IMAP */
+    }
+  }
+
+  if (!messageAccountId || !messageId) {
+    return NextResponse.json({ error: "accountId + id required" }, { status: 400 });
+  }
 
   const [account] = await db
     .select()
     .from(emailAccounts)
-    .where(and(eq(emailAccounts.id, accountId), eq(emailAccounts.userId, userId)))
+    .where(and(eq(emailAccounts.id, messageAccountId), eq(emailAccounts.userId, userId)))
     .limit(1);
   if (!account) return NextResponse.json({ error: "Email account not found" }, { status: 404 });
 
@@ -40,7 +77,7 @@ export async function GET(req: NextRequest) {
     return new Response(bytes, {
       headers: {
         "Content-Type": att.mime,
-        "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(att.filename)}`,
+        "Content-Disposition": `${dl ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(att.filename)}`,
         "Cache-Control": "private, max-age=300",
       },
     });

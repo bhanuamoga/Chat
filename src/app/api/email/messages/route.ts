@@ -159,15 +159,15 @@ export async function GET(req: NextRequest) {
   const currentPage = Math.min(page, totalPages);
   const threads = filtered.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE);
 
-  /* ---- Gmail-style EMAIL counts (individual messages, not threads) ---- */
-  const folderCounts: Record<string, number> = {};
-  for (const f of ["inbox", "sent", "drafts", "trash", "spam"] as const) {
-    const [{ value }] = await db
-      .select({ value: sql<number>`count(*)` })
-      .from(emails)
-      .where(and(eq(emails.userId, userId), eq(emails.accountId, accountId), eq(emails.folder, f)));
-    folderCounts[f] = Number(value) || 0;
-  }
+  /* ---- Gmail-style EMAIL counts (individual messages, not threads)
+     — 2 fast queries (GROUP BY + unread), not 7 — polls stay cheap ---- */
+  const folderCounts: Record<string, number> = { inbox: 0, sent: 0, drafts: 0, trash: 0, spam: 0 };
+  const perFolder = await db
+    .select({ folder: emails.folder, value: sql<number>`count(*)` })
+    .from(emails)
+    .where(and(eq(emails.userId, userId), eq(emails.accountId, accountId)))
+    .groupBy(emails.folder);
+  for (const r of perFolder) folderCounts[r.folder] = Number(r.value) || 0;
   const [{ value: unreadVal }] = await db
     .select({ value: sql<number>`count(*)` })
     .from(emails)

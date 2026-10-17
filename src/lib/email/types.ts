@@ -21,6 +21,7 @@ export interface EmailAttachmentMeta {
   filename: string;
   size?: number;
   mime?: string;
+  path?: string | null; // Supabase Storage location after sync upload
 }
 
 /** One row of the inbox/sent list — a collapsed conversation (Gmail thread). */

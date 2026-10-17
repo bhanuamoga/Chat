@@ -10,6 +10,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
+  ChevronLeft,
+  ChevronRight,
   Inbox as InboxIcon,
   Send,
   PenSquare,
@@ -29,6 +31,8 @@ import {
   PanelLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { EmailAccountClient, EmailFolderId, EmailThreadRow } from "@/lib/email/types";
@@ -336,12 +340,13 @@ export function EmailClient() {
         const unread = f.id === "inbox" ? folderCounts?.unreadInbox ?? 0 : 0;
         const active = folder === f.id;
         return (
-          <button
+          <Button
             key={f.id}
+            variant={active ? "secondary" : "ghost"}
             onClick={() => switchFolder(f.id)}
             className={cn(
-              "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors",
-              active ? "bg-accent font-semibold text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+              "h-10 w-full justify-start gap-2.5 rounded-xl px-3 text-sm",
+              active ? "font-semibold" : "font-normal text-muted-foreground"
             )}
           >
             <f.icon className={cn("size-4 shrink-0", active && "text-primary")} />
@@ -350,7 +355,7 @@ export function EmailClient() {
               <span className="shrink-0 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-primary-foreground">{unread}</span>
             )}
             <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{total}</span>
-          </button>
+          </Button>
         );
       })}
     </nav>
@@ -400,26 +405,30 @@ export function EmailClient() {
           </div>
         )}
 
-        {/* search bar */}
-        <div className="px-2 pb-2">
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 focus-within:border-primary/50">
-            <Search className="size-4 shrink-0 text-muted-foreground" />
-            <input
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setPage(1);
-              }}
-              placeholder={`Search ${FOLDERS.find((x) => x.id === folder)?.label.toLowerCase() ?? "mail"}`}
-              disabled={!activeAccount}
-              className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/70"
-            />
-            {query && (
-              <button onClick={() => setQuery("")} aria-label="Clear search" className="text-muted-foreground hover:text-foreground">
-                <X className="size-3.5" />
-              </button>
-            )}
-          </div>
+        {/* search bar — shadcn Input */}
+        <div className="relative px-2 pb-2">
+          <Search className="pointer-events-none absolute left-5 top-[13px] size-4 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(1);
+            }}
+            placeholder={`Search ${FOLDERS.find((x) => x.id === folder)?.label.toLowerCase() ?? "mail"}`}
+            disabled={!activeAccount}
+            className="h-9 rounded-xl bg-muted/40 pl-9 pr-8 text-sm"
+          />
+          {query && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+              className="absolute right-4 top-1.5 size-6"
+            >
+              <X className="size-3.5" />
+            </Button>
+          )}
         </div>
 
         {/* New email */}
@@ -511,50 +520,43 @@ export function EmailClient() {
             </Button>
           </div>
 
-          {/* All / Unread / Read tabs */}
-          <div className="grid grid-cols-3 gap-1 border-b border-border px-2 py-1.5">
-            {(
-              [
-                { id: "all", label: "All" },
-                { id: "unread", label: "Unread" },
-                { id: "read", label: "Read" },
-              ] as const
-            ).map((t) => (
-              <button
-                key={t.id}
-                onClick={() => switchTab(t.id)}
-                className={cn(
-                  "rounded-lg px-2 py-1.5 text-xs font-medium transition-colors",
-                  tab === t.id ? "bg-primary text-primary-foreground" : "bg-muted/60 text-muted-foreground hover:bg-accent hover:text-foreground"
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
+          {/* All / Unread / Read — shadcn Tabs */}
+          <div className="border-b border-border px-2 py-1.5">
+            <Tabs value={tab} onValueChange={(v) => switchTab(v as "all" | "unread" | "read")}>
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="all">All</TabsTrigger>
+                <TabsTrigger value="unread">Unread</TabsTrigger>
+                <TabsTrigger value="read">Read</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
 
           {/* Gmail pager — top right: "1–50 of N emails" + chevrons */}
           {pageInfo.displayTotal > 0 && (
-            <div className="flex items-center justify-end gap-1 border-b border-border px-3 py-1 text-xs text-muted-foreground">
+            <div className="flex items-center justify-end gap-0.5 border-b border-border px-2 py-0.5 text-xs text-muted-foreground">
               <span className="mr-1 tabular-nums">
                 {Math.min((page - 1) * 50 + 1, pageInfo.displayTotal)}–{Math.min(page * 50, pageInfo.displayTotal)} of {pageInfo.displayTotal}
               </span>
-              <button
-                className="rounded-md p-1 transition-colors hover:bg-accent disabled:opacity-30"
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
                 aria-label="Newer"
               >
-                <ArrowLeft className="size-4" />
-              </button>
-              <button
-                className="rounded-md p-1 transition-colors hover:bg-accent disabled:opacity-30"
+                <ChevronLeft className="size-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
                 onClick={() => setPage((p) => Math.min(pageInfo.totalPages, p + 1))}
                 disabled={page >= pageInfo.totalPages}
                 aria-label="Older"
               >
-                <ArrowLeft className="size-4 rotate-180" />
-              </button>
+                <ChevronRight className="size-4" />
+              </Button>
             </div>
           )}
 
