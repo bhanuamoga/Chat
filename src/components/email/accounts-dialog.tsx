@@ -114,6 +114,20 @@ export function AccountsDialog({
     }
   };
 
+  const clearData = async (id: string, label: string) => {
+    toast.loading(`Clearing synced data for ${label}…`, { id: `clear-${id}` });
+    const res = await fetch("/api/email/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "clearData", id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    toast.dismiss(`clear-${id}`);
+    if (!res.ok) return toast.error(data.error || "Clear failed");
+    toast.success(`Cleared ${data.cleared} emails — hit Sync to pull fresh`);
+    onSaved?.();
+  };
+
   const act = async (action: string, id: string) => {
     const res = await fetch("/api/email/config", {
       method: "POST",
@@ -160,6 +174,15 @@ export function AccountsDialog({
                     <Star className="size-4" />
                   </Button>
                 )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs text-muted-foreground"
+                  title="Remove all synced emails from the local table (your Gmail stays untouched)"
+                  onClick={() => clearData(a.id, a.emailAddress)}
+                >
+                  Clear data
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"

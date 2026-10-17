@@ -17,6 +17,7 @@ import {
 export interface ComposeInitial {
   to?: string;
   cc?: string;
+  bcc?: string;
   subject?: string;
   text?: string;
 }
@@ -37,6 +38,7 @@ export function ComposeDialog({
 }) {
   const [to, setTo] = useState("");
   const [cc, setCc] = useState("");
+  const [bcc, setBcc] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -46,6 +48,7 @@ export function ComposeDialog({
     if (open) {
       setTo(initial?.to ?? "");
       setCc(initial?.cc ?? "");
+      setBcc(initial?.bcc ?? "");
       setSubject(initial?.subject ?? "");
       setBody(initial?.text ?? "");
     }
@@ -59,7 +62,7 @@ export function ComposeDialog({
       const res = await fetch("/api/email/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId, to: to.trim(), cc: cc.trim(), subject: subject.trim(), text: body }),
+        body: JSON.stringify({ accountId, to: to.trim(), cc: cc.trim(), bcc: bcc.trim(), subject: subject.trim(), text: body }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return toast.error(data.error || "Send failed");
@@ -83,6 +86,8 @@ export function ComposeDialog({
             <Input value={to} onChange={(e) => setTo(e.target.value)} placeholder="name@gmail.com, other@example.com" autoFocus />
             <span className="text-xs text-muted-foreground">Cc</span>
             <Input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="optional" />
+            <span className="text-xs text-muted-foreground">Bcc</span>
+            <Input value={bcc} onChange={(e) => setBcc(e.target.value)} placeholder="optional" />
             <span className="text-xs text-muted-foreground">Subject</span>
             <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" />
           </div>

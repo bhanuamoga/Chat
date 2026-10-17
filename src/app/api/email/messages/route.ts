@@ -1,12 +1,14 @@
 /**
  * Email messages API:
- * GET   ?accountId=&folder=inbox|sent|drafts|trash|spam → grouped thread list
- * GET   ?accountId=&thread=KEY                         → full thread (asc)
- * PATCH { accountId, threadKey, isRead?, isStarred? }  → flags (+ mirrors \Seen to Gmail)
- * DELETE { accountId, threadKey, folder, mode? }       → move to Trash / purge forever
+ * GET   ?accountId=&folder=inbox|sent|drafts|trash|spam&q= → thread list
+ *       (inbox/sent tabs group across inbox+sent+drafts like Gmail — reply
+ *       counts, unread and counts include every message of the conversation)
+ * GET   ?accountId=&thread=KEY                            → full thread (asc)
+ * PATCH { accountId, threadKey, isRead?, isStarred? }     → flags (+ \Seen mirror)
+ * DELETE { accountId, threadKey, folder, mode? }          → Trash / purge
  */
 import { NextRequest, NextResponse } from "next/server";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, ilike } from "drizzle-orm";
 import { db } from "@/db";
 import { emailAccounts, emails } from "@/db/schema";
 import { auth } from "@/auth";
@@ -43,6 +45,9 @@ const toMessage = (r: typeof emails.$inferSelect): EmailMessage => ({
   attachments: (r.attachments as EmailMessage["attachments"]) ?? [],
 });
 
+/** list rows are slim — no bodies, so the first paint stays fast. */
+const ROWS_LIMIT = 800;
+
 export async function GET(req: NextRequest) {
   const userId = await requireUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -63,27 +68,66 @@ export async function GET(req: NextRequest) {
   }
 
   const folder = (q.get("folder") || "inbox") as EmailFolderId;
-  const rows = await db
-    .select()
-    .from(emails)
-    .where(and(eq(emails.userId, userId), eq(emails.accountId, accountId), eq(emails.folder, folder)))
-    .orderBy(desc(emails.date))
-    .limit(500);
+  const search = (q.get("q") || "").trim();
 
-  // collapse into Gmail-style conversation rows (threadKey groups ref-chains)
-  const seen = new Map<string, typeof rows>();
+  // Cross-folder conversation grouping like Gmail:
+  //  - inbox tab: threads having ≥1 inbox message (sent/draft replies join the count)
+  //  - sent tab:  threads having ≥1 sent message
+  //  - other tabs: only rows in that folder
+  const crossTabs = folder === "inbox" || folder === "sent";
+  const scanFolders: SyncFolder[] = crossTabs ? ["inbox", "sent", "drafts"] : [folder as SyncFolder];
+
+  const searchFilter =
+    search.length > 1
+      ? or(
+          ilike(emails.subject, `%${search}%`),
+          ilike(emails.snippet, `%${search}%`),
+          ilike(emails.fromName, `%${search}%`),
+          ilike(emails.fromAddress, `%${search}%`)
+        )
+      : undefined;
+
+  const rows = await db
+    .select({
+      threadKey: emails.threadKey,
+      subject: emails.subject,
+      snippet: emails.snippet,
+      fromName: emails.fromName,
+      fromAddress: emails.fromAddress,
+      date: emails.date,
+      folder: emails.folder,
+      isRead: emails.isRead,
+      isStarred: emails.isStarred,
+      hasAttachments: emails.hasAttachments,
+    })
+    .from(emails)
+    .where(
+      and(eq(emails.userId, userId), eq(emails.accountId, accountId), inArray(emails.folder, scanFolders), searchFilter)
+    )
+    .orderBy(desc(emails.date))
+    .limit(ROWS_LIMIT);
+
+  const groups = new Map<string, typeof rows>();
   const order: string[] = [];
   for (const r of rows) {
-    const list = seen.get(r.threadKey);
+    const list = groups.get(r.threadKey);
     if (list) list.push(r);
     else {
-      seen.set(r.threadKey, [r]);
+      groups.set(r.threadKey, [r]);
       order.push(r.threadKey);
     }
   }
-  const threads: EmailThreadRow[] = order.slice(0, 120).map((key) => {
-    const list = seen.get(key)!;
-    const latest = list[0];
+
+  const threads: EmailThreadRow[] = [];
+  for (const key of order) {
+    const list = groups.get(key)!;
+    const displayRows = crossTabs ? list : list;
+    const hasFolder = crossTabs
+      ? list.some((r) => r.folder === folder)
+      : true; // single-folder tab: all rows are in the folder already
+    if (!hasFolder) continue;
+
+    const latest = list[0]; // rows are date-desc
     const participants = [
       ...new Map(
         list
@@ -91,7 +135,7 @@ export async function GET(req: NextRequest) {
           .map((r) => [r.fromAddress, { name: r.fromName || undefined, address: r.fromAddress }])
       ).values(),
     ];
-    return {
+    threads.push({
       threadKey: key,
       accountId,
       folder,
@@ -99,12 +143,13 @@ export async function GET(req: NextRequest) {
       snippet: latest.snippet,
       participants,
       lastDate: latest.date.toISOString(),
-      count: list.length,
-      unread: list.some((r) => !r.isRead),
+      count: displayRows.length,
+      unread: list.some((r) => !r.isRead && (crossTabs ? r.folder === "inbox" : true)),
       isStarred: list.some((r) => r.isStarred),
       hasAttachments: list.some((r) => r.hasAttachments),
-    };
-  });
+    });
+    if (threads.length >= 200) break;
+  }
   return NextResponse.json({ threads });
 }
 
@@ -133,7 +178,6 @@ export async function PATCH(req: NextRequest) {
     .returning({ messageId: emails.messageId, folder: emails.folder });
 
   if (isRead !== undefined) {
-    // mirror to Gmail in the background — never block the UI on it
     db.select()
       .from(emailAccounts)
       .where(and(eq(emailAccounts.id, accountId), eq(emailAccounts.userId, userId)))
@@ -152,8 +196,8 @@ export async function PATCH(req: NextRequest) {
 
 /**
  * DELETE { accountId, threadKey, folder, mode? }
- * mode "trash" (default for all folders except trash) → IMAP MOVE to Trash + local flip
- * mode "purge" (default when called on trash)          → IMAP expunge + local delete
+ * mode "trash" (default outside trash) → IMAP MOVE to Trash + local flip
+ * mode "purge" (default inside trash / any folder with mode:"purge") → expunge + local delete
  */
 export async function DELETE(req: NextRequest) {
   const userId = await requireUserId();
@@ -181,7 +225,6 @@ export async function DELETE(req: NextRequest) {
 
   const purge = modeOverride ? modeOverride === "purge" : folder === "trash";
 
-  // mirror to Gmail best-effort — never block the UI on network mail ops
   if (account) {
     const ids = rows.map((r) => r.messageId);
     const boxes = [...new Set(rows.map((r) => r.folder))].filter((f): f is SyncFolder =>

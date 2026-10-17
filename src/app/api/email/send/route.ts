@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
   const replyToEmailId = String(body.replyToEmailId || "");
   let to = String(body.to || "").trim();
   const cc = String(body.cc || "").trim();
+  const bcc = String(body.bcc || "").trim();
   let subject = String(body.subject || "").trim();
   const text = String(body.text || "");
 
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
   if (!to) return NextResponse.json({ error: "Recipient (to) is required" }, { status: 400 });
 
   try {
-    const { messageId } = await sendMail(account, { to, cc, subject, text, inReplyTo, references });
+    const { messageId } = await sendMail(account, { to, cc, bcc, subject, text, inReplyTo, references });
 
     const localRow = {
       userId,

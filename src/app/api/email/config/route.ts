@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { emailAccounts } from "@/db/schema";
+import { emailAccounts, emails } from "@/db/schema";
 import { auth } from "@/auth";
 import { ensureEmailSchema } from "@/lib/email/ddl";
 import { testImapConnection, testSmtpConnection } from "@/lib/email/mail";
@@ -134,6 +134,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ accounts: await listAccounts(userId) });
     }
     return NextResponse.json({ accounts: remaining });
+  }
+
+  if (action === "clearData") {
+    const id = str(body.id);
+    const rows = await db
+      .delete(emails)
+      .where(id ? and(eq(emails.userId, userId), eq(emails.accountId, id)) : eq(emails.userId, userId))
+      .returning({ id: emails.id });
+    return NextResponse.json({ cleared: rows.length, accounts: await listAccounts(userId) });
   }
 
   if (action === "setDefault") {

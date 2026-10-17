@@ -1,14 +1,16 @@
 "use client";
 
 /**
- * Conversation pane: all messages of a thread (oldest → newest, Gmail-style),
- * each with full formatted body, plus a sticky reply composer at the bottom
- * that replies with proper RFC threading (server adds In-Reply-To + References).
+ * Conversation pane: all messages of a thread (oldest → newest, Gmail-style).
+ * HTML bodies render inside sandboxed srcdoc iframes (letter look, auto-height),
+ * attachments are downloadable live from Gmail, and the reply composer has
+ * Cc/Bcc — replies send with proper RFC threading.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowUp, Paperclip, Reply, Star } from "lucide-react";
+import { ArrowUp, Paperclip, Reply, Star, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChatTextarea } from "@/components/ui/chat-textarea";
 import { cn } from "@/lib/utils";
@@ -17,12 +19,62 @@ import { colorFor } from "./email-client";
 
 const initials = (m: EmailMessage) => (m.fromName || m.fromAddress || "?").slice(0, 1).toUpperCase();
 
-function MessageCard({ m, me, last }: { m: EmailMessage; me: string; last: boolean }) {
+const escapeHtmlLocal = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** Renders the (already sanitized) HTML body on a clean white letter canvas. */
+function EmailBody({ html, fallback }: { html: string | null; fallback: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const doc = useMemo(() => {
+    const inner = html ?? `<div style="white-space:pre-wrap;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif">${escapeHtmlLocal(fallback)}</div>`;
+    return `<!doctype html><html><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<base target="_blank"/>
+<style>
+  html, body { margin: 0; padding: 0; }
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         font-size: 14px; line-height: 1.55; color: #18181b; padding: 14px; word-break: break-word; }
+  img { max-width: 100% !important; height: auto !important; }
+  a { color: #2563eb; }
+  blockquote { border-left: 3px solid #e4e4e7; margin-left: 0; padding-left: 12px; color: #52525b; }
+  pre { white-space: pre-wrap; }
+</style></head><body>${inner}</body></html>`;
+  }, [html, fallback]);
+
+  return (
+    <iframe
+      ref={ref}
+      title="Email content"
+      sandbox="allow-same-origin"
+      srcDoc={doc}
+      className="mt-3 w-full rounded-lg border border-border/50 bg-white"
+      style={{ height: 160 }}
+      scrolling="no"
+      onLoad={(e) => {
+        const el = e.currentTarget;
+        requestAnimationFrame(() => {
+          try {
+            const h = el.contentWindow?.document.documentElement?.scrollHeight ?? 0;
+            if (h > 0) el.style.height = `${Math.min(h + 4, 6000)}px`;
+          } catch { /* keep default height */ }
+        });
+      }}
+    />
+  );
+}
+
+function MessageCard({
+  m,
+  me,
+  last,
+  accountId,
+}: {
+  m: EmailMessage;
+  me: string;
+  last: boolean;
+  accountId: string;
+}) {
   const mine = m.fromAddress.toLowerCase() === me.toLowerCase();
-  const body = m.bodyHtml || `<div style="white-space:pre-wrap;font-family:inherit">${m.bodyText
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")}</div>`;
   return (
     <article className={cn("rounded-2xl border border-border bg-card p-4", mine && "border-primary/25 bg-primary/[0.04]")}>
       <header className="flex items-start gap-3">
@@ -35,9 +87,7 @@ function MessageCard({ m, me, last }: { m: EmailMessage; me: string; last: boole
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2">
-            <span className="text-sm font-semibold text-foreground">
-              {mine ? "Me" : m.fromName || m.fromAddress}
-            </span>
+            <span className="text-sm font-semibold text-foreground">{mine ? "Me" : m.fromName || m.fromAddress}</span>
             {m.isStarred && <Star className="size-3.5 fill-amber-400 text-amber-400" />}
             <span className="text-xs text-muted-foreground">&lt;{m.fromAddress}&gt;</span>
             <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
@@ -50,17 +100,22 @@ function MessageCard({ m, me, last }: { m: EmailMessage; me: string; last: boole
           </div>
         </div>
       </header>
-      {/* emails are styled for a light canvas — render on white like Gmail does */}
-      <div
-        className="mt-3 overflow-x-auto rounded-xl bg-white p-3 text-[13px] leading-relaxed text-zinc-900 [&_img]:max-w-full"
-        dangerouslySetInnerHTML={{ __html: body }}
-      />
+
+      <EmailBody html={m.bodyHtml} fallback={m.bodyText} />
+
       {m.hasAttachments && m.attachments.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {m.attachments.map((a, i) => (
-            <span key={i} className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground">
+            <a
+              key={i}
+              href={`/api/email/attachment?accountId=${accountId}&id=${encodeURIComponent(m.messageId)}&i=${i}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              title={`Open ${a.filename}${a.size ? ` (${Math.round(a.size / 1024)} KB)` : ""}`}
+            >
               <Paperclip className="size-3" /> {a.filename}
-            </span>
+            </a>
           ))}
         </div>
       )}
@@ -73,13 +128,18 @@ export function ThreadView({
   thread,
   account,
   onRefreshed,
+  onTrash,
 }: {
   thread: EmailThreadRow;
   account: EmailAccountClient;
   onRefreshed: () => void;
+  onTrash?: () => void;
 }) {
   const [messages, setMessages] = useState<EmailMessage[] | null>(null);
   const [reply, setReply] = useState("");
+  const [cc, setCc] = useState("");
+  const [bcc, setBcc] = useState("");
+  const [showCcBcc, setShowCcBcc] = useState(false);
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -102,10 +162,7 @@ export function ThreadView({
   }, [messages]);
 
   const subject = useMemo(() => messages?.[0]?.subject || thread.subject, [messages, thread.subject]);
-  const replyTo = useMemo(() => {
-    const last = messages?.at(-1);
-    return last ? last.fromAddress : "";
-  }, [messages]);
+  const replyTo = useMemo(() => messages?.at(-1)?.fromAddress ?? "", [messages]);
 
   const sendReply = useCallback(async () => {
     const lastId = messages?.at(-1)?.id;
@@ -117,7 +174,13 @@ export function ThreadView({
       const res = await fetch("/api/email/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId: account.id, replyToEmailId: lastId, text: draft }),
+        body: JSON.stringify({
+          accountId: account.id,
+          replyToEmailId: lastId,
+          text: draft,
+          cc: cc.trim(),
+          bcc: bcc.trim(),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -126,69 +189,97 @@ export function ThreadView({
         return;
       }
       toast.success("Reply sent");
+      setCc("");
+      setBcc("");
       await load();
       onRefreshed();
     } finally {
       setSending(false);
     }
-  }, [reply, messages, sending, account.id, load, onRefreshed]);
+  }, [reply, cc, bcc, messages, sending, account.id, load, onRefreshed]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* subject header */}
-      <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+      {/* subject header — own bar so the right pane owns its full height */}
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
         <h2 className="truncate text-base font-semibold text-foreground">{subject || "(no subject)"}</h2>
         {thread.count > 1 && (
           <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{thread.count}</span>
+        )}
+        {onTrash && (
+          <button
+            className="ml-auto rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
+            onClick={onTrash}
+            aria-label="Delete conversation"
+          >
+            <Trash2 className="size-4" />
+          </button>
         )}
       </div>
 
       {/* messages */}
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:px-4">
         {messages === null ? (
-          <div className="space-y-4">
+          <div className="mx-auto max-w-3xl space-y-4">
             <Skeleton className="h-36 w-full rounded-2xl" />
             <Skeleton className="h-36 w-full rounded-2xl" />
           </div>
         ) : messages.length === 0 ? (
           <div className="py-16 text-center text-sm text-muted-foreground">This conversation is empty.</div>
         ) : (
-          messages.map((m, i) => <MessageCard key={m.id} m={m} me={account.emailAddress} last={i === messages.length - 1} />)
+          <div className="mx-auto max-w-3xl space-y-4">
+            {messages.map((m, i) => (
+              <MessageCard key={m.id} m={m} me={account.emailAddress} last={i === messages.length - 1} accountId={account.id} />
+            ))}
+          </div>
         )}
       </div>
 
-      {/* reply composer — Gmail style pinned at bottom (hidden in Trash) */}
+      {/* reply composer — pinned at bottom (hidden in Trash) */}
       {thread.folder === "trash" ? (
         <div className="border-t border-border bg-muted/40 px-4 py-3 text-center text-xs text-muted-foreground">
           This conversation is in Trash — nothing can be replied here.
         </div>
       ) : (
-      <div className="border-t border-border p-3">
-        <div className="rounded-2xl border border-border bg-card shadow-sm focus-within:border-primary/50">
-          <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2 text-xs text-muted-foreground">
-            <Reply className="size-3.5" />
-            Reply to <span className="font-medium text-foreground">{replyTo}</span>
-          </div>
-          <ChatTextarea
-            value={reply}
-            onChange={(e) => setReply(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                sendReply();
-              }
-            }}
-            placeholder="Type your reply… (Ctrl/⌘ + Enter to send)"
-            className="w-full text-sm placeholder:text-muted-foreground/60"
-          />
-          <div className="flex items-center justify-between px-2 pb-2">
-            <span className="text-[11px] text-muted-foreground">Threads stay in Gmail — In-Reply-To + References are set.</span>
-            <Button size="sm" onClick={sendReply} disabled={!reply.trim() || sending || !messages} className="rounded-xl">
-              {sending ? "Sending…" : "Send"} <ArrowUp className="ml-1.5 size-3.5" />
-            </Button>
+        <div className="border-t border-border p-3">
+          <div className="mx-auto max-w-3xl rounded-2xl border border-border bg-card shadow-sm focus-within:border-primary/50">
+            <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2 text-xs text-muted-foreground">
+              <Reply className="size-3.5" />
+              Reply to <span className="font-medium text-foreground">{replyTo}</span>
+              <button
+                className="ml-auto text-[11px] font-medium text-primary hover:underline"
+                onClick={() => setShowCcBcc((v) => !v)}
+                type="button"
+              >
+                {showCcBcc ? "Hide Cc/Bcc" : "Cc/Bcc"}
+              </button>
+            </div>
+            {showCcBcc && (
+              <div className="grid gap-1.5 border-b border-border/60 px-3 py-2 sm:grid-cols-2">
+                <Input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="Cc — name@gmail.com" className="h-8 text-xs" />
+                <Input value={bcc} onChange={(e) => setBcc(e.target.value)} placeholder="Bcc — name@gmail.com" className="h-8 text-xs" />
+              </div>
+            )}
+            <ChatTextarea
+              value={reply}
+              onChange={(e) => setReply(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  sendReply();
+                }
+              }}
+              placeholder="Type your reply… (Ctrl/⌘ + Enter to send)"
+              className="w-full text-sm placeholder:text-muted-foreground/60"
+            />
+            <div className="flex items-center justify-between px-2 pb-2">
+              <span className="text-[11px] text-muted-foreground">Threads stay in Gmail — In-Reply-To + References are set.</span>
+              <Button size="sm" onClick={sendReply} disabled={!reply.trim() || sending || !messages} className="rounded-xl">
+                {sending ? "Sending…" : "Send"} <ArrowUp className="ml-1.5 size-3.5" />
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
       )}
     </div>
   );

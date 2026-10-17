@@ -8,7 +8,7 @@ import nodemailer from "nodemailer";
 import type { EmailAccount } from "@/db/schema";
 import type { EmailAddress } from "./types";
 
-const SYNC_LIMIT_PER_BOX = 150;
+const SYNC_LIMIT_PER_BOX = 300;
 
 /** ---------- parsing helpers ---------- */
 
@@ -300,11 +300,59 @@ export async function setSeenFlag(account: EmailAccount, messageId: string, seen
   }
 }
 
+/** ---------- attachment fetch-on-demand ---------- */
+
+export interface FetchedAttachment {
+  filename: string;
+  mime: string;
+  content: Buffer;
+}
+
+/** Pull one attachment live from IMAP (searches every mailbox by Message-ID). */
+export async function fetchAttachment(
+  account: EmailAccount,
+  messageId: string,
+  index: number,
+): Promise<FetchedAttachment | null> {
+  const client = makeClient(account);
+  await client.connect();
+  try {
+    const listed = await client.list().catch(() => []);
+    const boxes = resolveBoxes(listed);
+    for (const [, path] of boxes) {
+      const lock = await client.getMailboxLock(path);
+      try {
+        await client.mailboxOpen(path, { readOnly: true });
+        const hits = (await client.search({ header: { "Message-ID": messageId.toLowerCase() } })) as number[] | false | undefined;
+        if (!hits || !hits.length) continue;
+        const msg = await client.fetchOne(hits[0], { source: true }, { uid: true });
+        if (!msg || !msg.source) continue;
+        const parsed: ParsedMail = await simpleParser(msg.source);
+        const named = (parsed.attachments ?? []).filter((x) => x.filename);
+        const att = named[index];
+        if (att) {
+          return {
+            filename: att.filename as string,
+            mime: att.contentType || "application/octet-stream",
+            content: att.content as Buffer,
+          };
+        }
+      } finally {
+        lock.release();
+      }
+    }
+    return null;
+  } finally {
+    await client.logout().catch(() => undefined);
+  }
+}
+
 /** ---------- SMTP send ---------- */
 
 export interface SendParams {
   to: string;
   cc?: string;
+  bcc?: string;
   subject: string;
   text: string;
   html?: string;
@@ -329,6 +377,7 @@ export async function sendMail(
     from,
     to: p.to,
     cc: p.cc || undefined,
+    bcc: p.bcc || undefined,
     subject: p.subject,
     text: p.text,
     html: p.html ?? `<div style="white-space:pre-wrap;font-family:inherit">${escapeHtml(p.text)}</div>`,
