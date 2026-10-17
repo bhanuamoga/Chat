@@ -180,10 +180,9 @@ export function EmailClient() {
   }, []);
 
   /* --------- streaming sync --------- */
-  const sync = useCallback(async () => {
-    if (!activeAccount || syncing) return;
-    setSyncing(true);
-    setProgress({ accountEmail: activeAccount.emailAddress, folder: null, fetched: 0, total: 0, boxIndex: 0 });
+  const syncRound = useCallback(async (): Promise<boolean> => {
+    /* returns TRUE when the server stopped on its time budget (more mail to get) */
+    if (!activeAccount) return false;
     try {
       const res = await fetch("/api/email/sync", {
         method: "POST",
@@ -193,11 +192,12 @@ export function EmailClient() {
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({}));
         toast.error(data.error || "Sync failed");
-        return;
+        return false;
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = "";
+      let partial = false;
       for (;;) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -223,19 +223,44 @@ export function EmailClient() {
                     }
                   : p
               );
-            } else if (evt.type === "error") toast.error(`Sync error: ${evt.message}`);
+            } else if (evt.type === "done") partial = Boolean(evt.partial);
+            else if (evt.type === "error" || evt.type === "fatal") toast.error(`Sync error: ${evt.message}`);
           } catch { /* partial line */ }
         }
       }
+      if (partial) {
+        setProgress((p) => (p ? { ...p, folder: "continuing older mail…" } : p));
+        return true;
+      }
       toast.success("Synced with Gmail");
       await loadThreads(true);
+      return false;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Sync failed");
+      return false;
+    }
+  }, [activeAccount, loadThreads]);
+
+  const syncingRef = useRef(false);
+  const sync = useCallback(async () => {
+    if (!activeAccount || syncingRef.current) return;
+    syncingRef.current = true;
+    setSyncing(true);
+    setProgress({ accountEmail: activeAccount.emailAddress, folder: null, fetched: 0, total: 0, boxIndex: 0 });
+    try {
+      /* full mailbox can need several time-budgeted rounds — keep going until done */
+      for (let round = 0; round < 20; round++) {
+        const more = await syncRound();
+        if (!more) break;
+      }
     } finally {
+      syncingRef.current = false;
       setSyncing(false);
+      setProgress((p) => (p ? { ...p } : p));
+      await loadThreads(true);
       setTimeout(() => setProgress(null), 900);
     }
-  }, [activeAccount, syncing, loadThreads]);
+  }, [activeAccount, syncRound, loadThreads]);
 
   /* --------- thread actions --------- */
   const openThread = useCallback((t: EmailThreadRow) => {
