@@ -104,7 +104,22 @@ export async function testImapConnection(cfg: Pick<EmailAccount, "emailAddress" 
   await client.logout().catch(() => undefined);
 }
 
-/** Parse one raw RFC822 message into our row shape. */
+/** Gmail-style inline images: replace src="cid:…" with data URIs from the attachments. */
+const INLINE_IMAGE_LIMIT = 300_000; // bytes — don't bloat the table with giant banners
+function embedInlineImages(html: string, parsed: ParsedMail): string {
+  if (!html.includes("cid:")) return html;
+  return html.replace(/src=["']cid:([^"']+)["']/gi, (full, cid) => {
+    const att = (parsed.attachments ?? []).find((att) => {
+      const id = (att.cid || att.contentId || "").replace(/[<>\s]/g, "");
+      return id && id === cid.replace(/[<>\s]/g, "");
+    });
+    if (att?.content && (att.size ?? att.content.length) <= INLINE_IMAGE_LIMIT) {
+      const mime = att.contentType || "image/png";
+      return `src="data:${mime};base64,${att.content.toString("base64")}"`;
+    }
+    return full;
+  });
+}/** Parse one raw RFC822 message into our row shape. */
 async function parseRaw(
   source: Buffer,
   folder: SyncedEmail["folder"],
@@ -116,7 +131,8 @@ async function parseRaw(
   const refs = refChain(parsed.references);
   const subject = parsed.subject || "(no subject)";
   const bodyText = parsed.text?.trim() || "";
-  const bodyHtml = typeof parsed.html === "string" ? sanitizeEmailHtml(parsed.html) : null;
+  let bodyHtml = typeof parsed.html === "string" ? sanitizeEmailHtml(parsed.html) : null;
+  if (bodyHtml) bodyHtml = embedInlineImages(bodyHtml, parsed);
   const from = parsed.from?.value?.[0];
   return {
     messageId,

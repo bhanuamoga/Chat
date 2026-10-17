@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowUp, Paperclip, Reply, Star, Trash2 } from "lucide-react";
+import { ArrowUp, Paperclip, Reply, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -210,42 +210,44 @@ export function ThreadView({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* subject header — own bar so the right pane owns its full height */}
-      <div className="flex items-center gap-2 border-b border-border bg-card/60 px-2 py-3 sm:px-5">
-        {onBack && (
-          <button
-            onClick={onBack}
-            aria-label="Back to list"
-            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <ArrowLeft className="size-4" />
-          </button>
-        )}
+      <div className="flex items-center gap-2 border-b border-border bg-card/60 px-3 py-3 sm:px-5">
         <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">{subject || "(no subject)"}</h2>
         {thread.count > 1 && (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{thread.count}</span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">{thread.count}</span>
         )}
-        {onTrash && (
-          <button
-            className="ml-auto rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
-            onClick={onTrash}
-            aria-label="Delete conversation"
-          >
-            <Trash2 className="size-4" />
-          </button>
-        )}
+        <div className="ml-auto flex items-center gap-1">
+          {onTrash && (
+            <button
+              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
+              onClick={onTrash}
+              aria-label="Delete conversation"
+            >
+              <Trash2 className="size-4" />
+            </button>
+          )}
+          {onBack && (
+            <button
+              onClick={onBack}
+              aria-label="Close conversation"
+              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* messages */}
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:px-4">
         {messages === null ? (
-          <div className="mx-auto max-w-3xl space-y-4">
+          <div className="mx-auto w-full max-w-5xl space-y-4">
             <Skeleton className="h-36 w-full rounded-2xl" />
             <Skeleton className="h-36 w-full rounded-2xl" />
           </div>
         ) : messages.length === 0 ? (
           <div className="py-16 text-center text-sm text-muted-foreground">This conversation is empty.</div>
         ) : (
-          <div className="mx-auto max-w-3xl space-y-4">
+          <div className="mx-auto w-full max-w-5xl space-y-4">
             {messages.map((m, i) => (
               <MessageCard key={m.id} m={m} me={account.emailAddress} last={i === messages.length - 1} accountId={account.id} />
             ))}
