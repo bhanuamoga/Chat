@@ -159,24 +159,44 @@ export async function GET(req: NextRequest) {
   const currentPage = Math.min(page, totalPages);
   const threads = filtered.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE);
 
-  /* total thread counts per folder — drives the Gmail-like left nav badges */
+  /* ---- Gmail-style EMAIL counts (individual messages, not threads) ---- */
   const folderCounts: Record<string, number> = {};
   for (const f of ["inbox", "sent", "drafts", "trash", "spam"] as const) {
     const [{ value }] = await db
-      .select({ value: sql<number>`count(distinct ${emails.threadKey})` })
+      .select({ value: sql<number>`count(*)` })
       .from(emails)
       .where(and(eq(emails.userId, userId), eq(emails.accountId, accountId), eq(emails.folder, f)));
     folderCounts[f] = Number(value) || 0;
   }
   const [{ value: unreadVal }] = await db
-    .select({ value: sql<number>`count(distinct ${emails.threadKey})` })
+    .select({ value: sql<number>`count(*)` })
     .from(emails)
     .where(
       and(eq(emails.userId, userId), eq(emails.accountId, accountId), eq(emails.folder, "inbox"), eq(emails.isRead, false))
     );
   folderCounts.unreadInbox = Number(unreadVal) || 0;
 
-  return NextResponse.json({ threads, page: currentPage, perPage: PER_PAGE, total, totalPages, folderCounts });
+  /* pager's "of N": total emails in this folder (narrowed by the search, like Gmail) */
+  let displayTotal = folderCounts[folder] ?? 0;
+  if (search.length > 1) {
+    const [{ value }] = await db
+      .select({ value: sql<number>`count(*)` })
+      .from(emails)
+      .where(
+        and(eq(emails.userId, userId), eq(emails.accountId, accountId), eq(emails.folder, folder as SyncFolder), searchFilter)
+      );
+    displayTotal = Number(value) || 0;
+  }
+
+  return NextResponse.json({
+    threads,
+    page: currentPage,
+    perPage: PER_PAGE,
+    total,               // thread total (drives pages)
+    totalPages,
+    folderCounts,        // email counts per folder (left nav)
+    displayTotal,        // email count shown as "of N" pager total
+  });
 }
 
 /** Mark a thread read/unread or star/unstar; also mirrors \Seen to Gmail (best effort). */

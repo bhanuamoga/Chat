@@ -76,10 +76,16 @@ function MessageCard({
 }) {
   const mine = m.fromAddress.toLowerCase() === me.toLowerCase();
   return (
-    <article className={cn("rounded-2xl border border-border bg-card p-4", mine && "border-primary/25 bg-primary/[0.04]")}>
+    <article
+      className={cn(
+        "overflow-hidden rounded-xl border border-border/70 bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
+        mine && "border-primary/30"
+      )}
+    >
+      <div className="p-4 sm:p-5">
       <header className="flex items-start gap-3">
         <span
-          className="flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+          className="flex size-10 shrink-0 select-none items-center justify-center rounded-full text-sm font-bold text-white shadow-sm"
           style={{ background: colorFor(m.fromAddress || m.fromName) }}
           aria-hidden
         >
@@ -90,11 +96,11 @@ function MessageCard({
             <span className="text-sm font-semibold text-foreground">{mine ? "Me" : m.fromName || m.fromAddress}</span>
             {m.isStarred && <Star className="size-3.5 fill-amber-400 text-amber-400" />}
             <span className="text-xs text-muted-foreground">&lt;{m.fromAddress}&gt;</span>
-            <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+            <span className="ml-auto shrink-0 text-xs text-muted-foreground">
               {new Date(m.date).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
             </span>
           </div>
-          <div className="truncate text-xs text-muted-foreground">
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">
             to {m.toAddresses.map((a) => a.name || a.address).join(", ") || "—"}
             {m.ccAddresses.length > 0 && <> · cc {m.ccAddresses.map((a) => a.name || a.address).join(", ")}</>}
           </div>
@@ -111,7 +117,7 @@ function MessageCard({
               href={`/api/email/attachment?accountId=${accountId}&id=${encodeURIComponent(m.messageId)}&i=${i}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               title={`Open ${a.filename}${a.size ? ` (${Math.round(a.size / 1024)} KB)` : ""}`}
             >
               <Paperclip className="size-3" /> {a.filename}
@@ -119,7 +125,8 @@ function MessageCard({
           ))}
         </div>
       )}
-      {!last && <div className="mt-3 flex justify-end"><Reply className="size-3.5 text-muted-foreground/50" /></div>}
+      {!last && <div className="mt-3 flex justify-end"><Reply className="size-3.5 text-muted-foreground/40" /></div>}
+      </div>
     </article>
   );
 }
@@ -203,7 +210,7 @@ export function ThreadView({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* subject header — own bar so the right pane owns its full height */}
-      <div className="flex items-center gap-2 border-b border-border px-2 py-2 sm:px-4">
+      <div className="flex items-center gap-2 border-b border-border bg-card/60 px-2 py-3 sm:px-5">
         {onBack && (
           <button
             onClick={onBack}
@@ -213,7 +220,7 @@ export function ThreadView({
             <ArrowLeft className="size-4" />
           </button>
         )}
-        <h2 className="truncate text-base font-semibold text-foreground">{subject || "(no subject)"}</h2>
+        <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">{subject || "(no subject)"}</h2>
         {thread.count > 1 && (
           <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{thread.count}</span>
         )}
@@ -253,16 +260,16 @@ export function ThreadView({
         </div>
       ) : (
         <div className="border-t border-border p-3">
-          <div className="mx-auto max-w-3xl rounded-2xl border border-border bg-card shadow-sm focus-within:border-primary/50">
-            <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2 text-xs text-muted-foreground">
+          <div className="mx-auto max-w-3xl overflow-hidden rounded-xl border border-border bg-card shadow-md focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/10">
+            <div className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground">
               <Reply className="size-3.5" />
               Reply to <span className="font-medium text-foreground">{replyTo}</span>
               <button
-                className="ml-auto text-[11px] font-medium text-primary hover:underline"
+                className="ml-auto rounded-md px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-primary transition-colors hover:bg-primary/10"
                 onClick={() => setShowCcBcc((v) => !v)}
                 type="button"
               >
-                {showCcBcc ? "Hide Cc/Bcc" : "Cc/Bcc"}
+                {showCcBcc ? "− Cc/Bcc" : "+ Cc/Bcc"}
               </button>
             </div>
             {showCcBcc && (
@@ -283,10 +290,10 @@ export function ThreadView({
               placeholder="Type your reply… (Ctrl/⌘ + Enter to send)"
               className="w-full text-sm placeholder:text-muted-foreground/60"
             />
-            <div className="flex items-center justify-between px-2 pb-2">
-              <span className="text-[11px] text-muted-foreground">Threads stay in Gmail — In-Reply-To + References are set.</span>
-              <Button size="sm" onClick={sendReply} disabled={!reply.trim() || sending || !messages} className="rounded-xl">
-                {sending ? "Sending…" : "Send"} <ArrowUp className="ml-1.5 size-3.5" />
+            <div className="flex items-center justify-between px-3 pb-3 pt-1">
+              <span className="select-none text-[11px] text-muted-foreground/70">Ctrl/⌘ + Enter to send · stays in the same Gmail thread</span>
+              <Button size="sm" onClick={sendReply} disabled={!reply.trim() || sending || !messages} className="h-9 rounded-full px-5 text-sm font-semibold shadow-sm">
+                {sending ? "Sending…" : "Send"} <ArrowUp className="ml-1.5 size-4" />
               </Button>
             </div>
           </div>

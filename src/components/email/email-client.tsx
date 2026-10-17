@@ -76,7 +76,7 @@ export function EmailClient() {
   const [folder, setFolder] = useState<EmailFolderId>("inbox");
   const [tab, setTab] = useState<"all" | "unread" | "read">("all");
   const [page, setPage] = useState(1);
-  const [pageInfo, setPageInfo] = useState<{ total: number; totalPages: number; perPage: number }>({ total: 0, totalPages: 1, perPage: 50 });
+  const [pageInfo, setPageInfo] = useState<{ total: number; totalPages: number; perPage: number; displayTotal: number }>({ total: 0, totalPages: 1, perPage: 50, displayTotal: 0 });
   const [folderCounts, setFolderCounts] = useState<FolderCounts>({});
   const [query, setQuery] = useState("");
   const [qDebounced, setQDebounced] = useState("");
@@ -135,7 +135,12 @@ export function EmailClient() {
         if (res.ok) {
           const data = await res.json();
           setThreads(data.threads ?? []);
-          setPageInfo({ total: data.total ?? 0, totalPages: data.totalPages ?? 1, perPage: data.perPage ?? 50 });
+          setPageInfo({
+            total: data.total ?? 0,
+            totalPages: data.totalPages ?? 1,
+            perPage: data.perPage ?? 50,
+            displayTotal: data.displayTotal ?? data.total ?? 0,
+          });
           if (data.folderCounts) setFolderCounts(data.folderCounts);
           if (data.page && data.page !== page) setPage(data.page);
         }
@@ -341,8 +346,10 @@ export function EmailClient() {
           >
             <f.icon className={cn("size-4 shrink-0", active && "text-primary")} />
             <span className="min-w-0 flex-1 truncate text-left">{f.label}</span>
-            {unread > 0 && <span className="shrink-0 text-[11px] font-bold text-primary">{unread}</span>}
-            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/70">{total}</span>
+            {unread > 0 && (
+              <span className="shrink-0 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-primary-foreground">{unread}</span>
+            )}
+            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{total}</span>
           </button>
         );
       })}
@@ -353,7 +360,7 @@ export function EmailClient() {
   return (
     <div className="flex h-full min-h-0 flex-1">
       {/* ══ LEFT — account · sync/settings · search · New email · folders ══ */}
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-border md:flex">
+      <aside className="hidden w-72 shrink-0 flex-col border-r border-border md:flex">
         {/* account row — sync + settings sit next to the email */}
         <div className="mx-2 mb-2 mt-2 flex items-center gap-1 rounded-xl border border-border bg-card px-2 py-2">
           <button
@@ -526,6 +533,31 @@ export function EmailClient() {
             ))}
           </div>
 
+          {/* Gmail pager — top right: "1–50 of N emails" + chevrons */}
+          {pageInfo.displayTotal > 0 && (
+            <div className="flex items-center justify-end gap-1 border-b border-border px-3 py-1 text-xs text-muted-foreground">
+              <span className="mr-1 tabular-nums">
+                {Math.min((page - 1) * 50 + 1, pageInfo.displayTotal)}–{Math.min(page * 50, pageInfo.displayTotal)} of {pageInfo.displayTotal}
+              </span>
+              <button
+                className="rounded-md p-1 transition-colors hover:bg-accent disabled:opacity-30"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                aria-label="Newer"
+              >
+                <ArrowLeft className="size-4" />
+              </button>
+              <button
+                className="rounded-md p-1 transition-colors hover:bg-accent disabled:opacity-30"
+                onClick={() => setPage((p) => Math.min(pageInfo.totalPages, p + 1))}
+                disabled={page >= pageInfo.totalPages}
+                aria-label="Older"
+              >
+                <ArrowLeft className="size-4 rotate-180" />
+              </button>
+            </div>
+          )}
+
           {/* sync progress (mobile — desktop shows it in the left panel) */}
           {syncing && (
             <div className="px-3 pb-1 pt-2 md:hidden">
@@ -618,32 +650,6 @@ export function EmailClient() {
             )}
           </div>
 
-          {/* pagination — 50/page with totals */}
-          {pageInfo.total > 0 && (
-            <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground">
-              <span className="tabular-nums">
-                {pageInfo.total} thread{pageInfo.total === 1 ? "" : "s"}
-                {tab !== "all" ? ` · ${tab}` : ""}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  className="rounded-md px-2 py-1 transition-colors hover:bg-accent disabled:opacity-40"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                >
-                  ← Newer
-                </button>
-                <span className="tabular-nums">{page}/{pageInfo.totalPages}</span>
-                <button
-                  className="rounded-md px-2 py-1 transition-colors hover:bg-accent disabled:opacity-40"
-                  onClick={() => setPage((p) => Math.min(pageInfo.totalPages, p + 1))}
-                  disabled={page >= pageInfo.totalPages}
-                >
-                  Older →
-                </button>
-              </div>
-            </div>
-          )}
           </>
         )}
       </div>
