@@ -352,26 +352,85 @@ export function EmailClient() {
   /* ---------------------------------------- layout ---------------------------------------- */
   return (
     <div className="flex h-full min-h-0 flex-1">
-      {/* ══ LEFT — folder navigation (Gmail style, totals on the right) ══ */}
-      <aside className="hidden w-52 shrink-0 flex-col border-r border-border md:flex">
-        {/* account card */}
-        <button
-          onClick={() => activeAccount && setAccountsOpen(true)}
-          className="mx-2 mb-2 mt-2 flex items-center gap-2 rounded-xl border border-border bg-card px-2.5 py-2 text-left transition-colors hover:bg-accent/60"
-          title="Email account"
-        >
-          <span
-            className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
-            style={{ background: colorFor(activeAccount?.emailAddress ?? "?") }}
+      {/* ══ LEFT — account · sync/settings · search · New email · folders ══ */}
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-border md:flex">
+        {/* account row — sync + settings sit next to the email */}
+        <div className="mx-2 mb-2 mt-2 flex items-center gap-1 rounded-xl border border-border bg-card px-2 py-2">
+          <button
+            onClick={() => activeAccount && setAccountsOpen(true)}
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-accent/60"
+            title="Email account"
           >
-            {(activeAccount?.emailAddress ?? "?").slice(0, 1).toUpperCase()}
-          </span>
-          <span className="min-w-0">
-            <span className="block truncate text-[13px] font-semibold text-foreground">{activeAccount?.name || "Account"}</span>
-            <span className="block truncate text-[11px] text-muted-foreground">{activeAccount?.emailAddress ?? "configure…"}</span>
-          </span>
-        </button>
-        <div className="flex-1 overflow-y-auto">{folderNav()}</div>
+            <span
+              className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+              style={{ background: colorFor(activeAccount?.emailAddress ?? "?") }}
+            >
+              {(activeAccount?.emailAddress ?? "?").slice(0, 1).toUpperCase()}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-[13px] font-semibold text-foreground">{activeAccount?.name || "Account"}</span>
+              <span className="block truncate text-[11px] text-muted-foreground">{activeAccount?.emailAddress ?? "configure…"}</span>
+            </span>
+          </button>
+          <Button variant="ghost" size="icon" onClick={sync} disabled={syncing || !activeAccount} title="Sync from Gmail" className="size-8 shrink-0">
+            {syncing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => setAccountsOpen(true)} title="Email configuration" className="size-8 shrink-0">
+            <Settings className="size-4" />
+          </Button>
+        </div>
+
+        {/* sync progress */}
+        {syncing && (
+          <div className="mx-2 mb-2">
+            <div className="flex items-center gap-1.5">
+              <div className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out" style={{ width: `${syncPct}%` }} />
+              </div>
+              <span className="w-9 text-right text-[11px] tabular-nums text-muted-foreground">{syncPct}%</span>
+            </div>
+            <div className="mt-1 truncate text-[11px] text-muted-foreground">{syncLabel}</div>
+          </div>
+        )}
+
+        {/* search bar */}
+        <div className="px-2 pb-2">
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 focus-within:border-primary/50">
+            <Search className="size-4 shrink-0 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
+              placeholder={`Search ${FOLDERS.find((x) => x.id === folder)?.label.toLowerCase() ?? "mail"}`}
+              disabled={!activeAccount}
+              className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/70"
+            />
+            {query && (
+              <button onClick={() => setQuery("")} aria-label="Clear search" className="text-muted-foreground hover:text-foreground">
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* New email */}
+        <div className="px-2 pb-2">
+          <Button
+            onClick={() => {
+              setDraftSeed(null);
+              setComposeOpen(true);
+            }}
+            disabled={!activeAccount}
+            className="h-11 w-full justify-start gap-3 rounded-2xl text-sm font-semibold shadow-md"
+          >
+            <PenSquare className="size-4" /> New email
+          </Button>
+        </div>
+
+        {/* folders with totals */}
+        <div className="flex-1 overflow-y-auto border-t border-border/60 pt-2">{folderNav()}</div>
       </aside>
 
       {/* mobile folder overlay */}
@@ -403,8 +462,8 @@ export function EmailClient() {
           />
         ) : (
           <>
-          {/* header row: nav menu (mobile) · search · New email · sync · settings */}
-          <div className="flex items-center gap-2 border-b border-border px-2 py-2">
+          {/* header row — MOBILE only (desktop lives in the left panel) */}
+          <div className="flex items-center gap-2 border-b border-border px-2 py-2 md:hidden">
             <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setNavOpen(true)} aria-label="Folders">
               <PanelLeft className="size-4" />
             </Button>
@@ -467,9 +526,9 @@ export function EmailClient() {
             ))}
           </div>
 
-          {/* sync progress */}
+          {/* sync progress (mobile — desktop shows it in the left panel) */}
           {syncing && (
-            <div className="px-3 pb-1 pt-2">
+            <div className="px-3 pb-1 pt-2 md:hidden">
               <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
                 <div className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out" style={{ width: `${syncPct}%` }} />
               </div>
