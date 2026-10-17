@@ -164,6 +164,74 @@ export const naturalMessages = pgTable(
   ]
 );
 
+// ---------------------------------------------------------------------------
+// Email (Gmail via IMAP + SMTP/Nodemailer): per-user account config + synced mail
+// ---------------------------------------------------------------------------
+
+export const emailAccounts = pgTable(
+  "email_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull().default(""),           // sender display name
+    emailAddress: text("email_address").notNull(),
+    appPassword: text("app_password").notNull(),        // Gmail app password / IMAP+SMTP creds
+    imapHost: text("imap_host").notNull().default("imap.gmail.com"),
+    imapPort: integer("imap_port").notNull().default(993),
+    smtpHost: text("smtp_host").notNull().default("smtp.gmail.com"),
+    smtpPort: integer("smtp_port").notNull().default(587),
+    isDefault: boolean("is_default").notNull().default(false),
+    lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("email_acc_user_idx").on(t.userId)]
+);
+
+export const emails = pgTable(
+  "emails",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => emailAccounts.id, { onDelete: "cascade" }),
+    messageId: text("message_id").notNull(),            // RFC 5322 Message-ID (or local-<uuid>)
+    threadKey: text("thread_key").notNull(),            // root Message-ID of the conversation
+    inReplyTo: text("in_reply_to"),
+    refIds: text("ref_ids").notNull().default(""),      // space-separated References chain
+    fromAddress: text("from_address").notNull().default(""),
+    fromName: text("from_name").notNull().default(""),
+    toAddresses: jsonb("to_addresses").notNull().default([]), // [{name,address}]
+    ccAddresses: jsonb("cc_addresses").notNull().default([]),
+    subject: text("subject").notNull().default(""),
+    snippet: text("snippet").notNull().default(""),
+    bodyText: text("body_text").notNull().default(""),
+    bodyHtml: text("body_html"),
+    date: timestamp("date", { withTimezone: true }).notNull(),
+    folder: text("folder").notNull().default("inbox"),  // 'inbox' | 'sent'
+    isRead: boolean("is_read").notNull().default(false),
+    isStarred: boolean("is_starred").notNull().default(false),
+    hasAttachments: boolean("has_attachments").notNull().default(false),
+    attachments: jsonb("attachments").notNull().default([]), // [{filename,size,mime}]
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("emails_user_idx").on(t.userId),
+    index("emails_acc_idx").on(t.accountId),
+    index("emails_thread_idx").on(t.threadKey),
+    index("emails_date_idx").on(t.date),
+    index("emails_folder_idx").on(t.folder),
+  ]
+);
+
+export type EmailAccount = typeof emailAccounts.$inferSelect;
+export type EmailRow = typeof emails.$inferSelect;
+
 export type User = typeof users.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;
 export type Participant = typeof conversationParticipants.$inferSelect;
