@@ -8,7 +8,7 @@
  * DELETE { accountId, threadKey, folder, mode? }          → Trash / purge
  */
 import { NextRequest, NextResponse } from "next/server";
-import { and, asc, desc, eq, inArray, or, ilike } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, ilike, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { emailAccounts, emails } from "@/db/schema";
 import { auth } from "@/auth";
@@ -69,6 +69,9 @@ export async function GET(req: NextRequest) {
 
   const folder = (q.get("folder") || "inbox") as EmailFolderId;
   const search = (q.get("q") || "").trim();
+  const state = (q.get("state") || "all") as "all" | "unread" | "read";
+  const page = Math.max(1, Number(q.get("page")) || 1);
+  const PER_PAGE = 50;
 
   // Cross-folder conversation grouping like Gmail:
   //  - inbox tab: threads having ≥1 inbox message (sent/draft replies join the count)
@@ -118,13 +121,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const threads: EmailThreadRow[] = [];
+  const allThreads: EmailThreadRow[] = [];
   for (const key of order) {
     const list = groups.get(key)!;
-    const displayRows = crossTabs ? list : list;
-    const hasFolder = crossTabs
-      ? list.some((r) => r.folder === folder)
-      : true; // single-folder tab: all rows are in the folder already
+    const hasFolder = crossTabs ? list.some((r) => r.folder === folder) : true;
     if (!hasFolder) continue;
 
     const latest = list[0]; // rows are date-desc
@@ -135,7 +135,7 @@ export async function GET(req: NextRequest) {
           .map((r) => [r.fromAddress, { name: r.fromName || undefined, address: r.fromAddress }])
       ).values(),
     ];
-    threads.push({
+    allThreads.push({
       threadKey: key,
       accountId,
       folder,
@@ -143,14 +143,23 @@ export async function GET(req: NextRequest) {
       snippet: latest.snippet,
       participants,
       lastDate: latest.date.toISOString(),
-      count: displayRows.length,
+      count: list.length,
       unread: list.some((r) => !r.isRead && (crossTabs ? r.folder === "inbox" : true)),
       isStarred: list.some((r) => r.isStarred),
       hasAttachments: list.some((r) => r.hasAttachments),
     });
-    if (threads.length >= 200) break;
   }
-  return NextResponse.json({ threads });
+
+  // state filter (all / unread / read) — applied on TOP of the folder grouping
+  const filtered =
+    state === "unread" ? allThreads.filter((t) => t.unread) : state === "read" ? allThreads.filter((t) => !t.unread) : allThreads;
+
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const threads = filtered.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE);
+
+  return NextResponse.json({ threads, page: currentPage, perPage: PER_PAGE, total, totalPages });
 }
 
 /** Mark a thread read/unread or star/unstar; also mirrors \Seen to Gmail (best effort). */

@@ -70,6 +70,9 @@ export function EmailClient() {
   const [accounts, setAccounts] = useState<EmailAccountClient[] | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [folder, setFolder] = useState<EmailFolderId>("inbox");
+  const [tab, setTab] = useState<"all" | "unread" | "read">("all");
+  const [page, setPage] = useState(1);
+  const [pageInfo, setPageInfo] = useState<{ total: number; totalPages: number; perPage: number }>({ total: 0, totalPages: 1, perPage: 50 });
   const [query, setQuery] = useState("");
   const [qDebounced, setQDebounced] = useState("");
   const [threads, setThreads] = useState<EmailThreadRow[]>([]);
@@ -118,18 +121,20 @@ export function EmailClient() {
       if (!activeAccount) return;
       if (!silent) setListLoading(true);
       try {
-        const params = new URLSearchParams({ accountId: activeAccount.id, folder });
+        const params = new URLSearchParams({ accountId: activeAccount.id, folder, state: tab, page: String(page) });
         if (qDebounced) params.set("q", qDebounced);
         const res = await fetch(`/api/email/messages?${params}`);
         if (res.ok) {
           const data = await res.json();
           setThreads(data.threads ?? []);
+          setPageInfo({ total: data.total ?? 0, totalPages: data.totalPages ?? 1, perPage: data.perPage ?? 50 });
+          if (data.page && data.page !== page) setPage(data.page); // clamp server-side
         }
       } finally {
         setListLoading(false);
       }
     },
-    [activeAccount, folder, qDebounced]
+    [activeAccount, folder, tab, page, qDebounced]
   );
 
   useEffect(() => {
@@ -137,7 +142,16 @@ export function EmailClient() {
     setSelected(null);
     setMobileThread(false);
     loadThreads();
-  }, [activeAccount?.id, folder, qDebounced]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeAccount?.id, folder, tab, page, qDebounced]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const switchFolder = useCallback((f: EmailFolderId) => {
+    setFolder(f);
+    setPage(1);
+  }, []);
+  const switchTab = useCallback((t: "all" | "unread" | "read") => {
+    setTab(t);
+    setPage(1);
+  }, []);
 
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -336,9 +350,9 @@ export function EmailClient() {
           </div>
         </div>
 
-        {/* row 2 — search */}
-        <div className="px-2 pb-2">
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 focus-within:border-primary/50">
+        {/* row 2 — search + New email in ONE compact row */}
+        <div className="flex items-center gap-2 px-2 pb-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 focus-within:border-primary/50">
             <Search className="size-4 shrink-0 text-muted-foreground" />
             <input
               value={query}
@@ -352,19 +366,15 @@ export function EmailClient() {
               </button>
             )}
           </div>
-        </div>
-
-        {/* row 3 — New email */}
-        <div className="px-2 pb-2">
           <Button
             onClick={() => {
               setDraftSeed(null);
               setComposeOpen(true);
             }}
             disabled={!activeAccount}
-            className="h-11 w-full justify-start gap-3 rounded-2xl text-sm font-semibold shadow-md"
+            className="h-10 shrink-0 gap-2 rounded-xl text-sm font-semibold shadow-md"
           >
-            <PenSquare className="size-4" /> New email
+            <PenSquare className="size-4" /> <span className="hidden sm:inline">New email</span>
           </Button>
         </div>
 
@@ -375,7 +385,7 @@ export function EmailClient() {
             return (
               <button
                 key={f.id}
-                onClick={() => setFolder(f.id)}
+                onClick={() => switchFolder(f.id)}
                 className={cn(
                   "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
                   folder === f.id
@@ -389,6 +399,28 @@ export function EmailClient() {
               </button>
             );
           })}
+        </div>
+
+        {/* read state tabs — All / Unread / Read (Gmail-style) */}
+        <div className="grid grid-cols-3 gap-1 px-2 pb-1.5 pt-0.5">
+          {(
+            [
+              { id: "all", label: "All" },
+              { id: "unread", label: "Unread" },
+              { id: "read", label: "Read" },
+            ] as const
+          ).map((t) => (
+            <button
+              key={t.id}
+              onClick={() => switchTab(t.id)}
+              className={cn(
+                "rounded-lg px-2 py-1.5 text-xs font-medium transition-colors",
+                tab === t.id ? "bg-primary text-primary-foreground" : "bg-muted/60 text-muted-foreground hover:bg-accent hover:text-foreground"
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
         {/* sync progress */}
@@ -483,6 +515,37 @@ export function EmailClient() {
             })
           )}
         </div>
+
+        {/* pagination — Gmail style 50/page with total thread count */}
+        {pageInfo.total > 0 && (
+          <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground">
+            <span className="tabular-nums">
+              {pageInfo.total} thread{pageInfo.total === 1 ? "" : "s"}
+              {tab !== "all" ? ` · ${tab}` : ""}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                className="rounded-md px-2 py-1 transition-colors hover:bg-accent disabled:opacity-40"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                aria-label="Previous page"
+              >
+                ← Newer
+              </button>
+              <span className="tabular-nums">
+                {page}/{pageInfo.totalPages}
+              </span>
+              <button
+                className="rounded-md px-2 py-1 transition-colors hover:bg-accent disabled:opacity-40"
+                onClick={() => setPage((p) => Math.min(pageInfo.totalPages, p + 1))}
+                disabled={page >= pageInfo.totalPages}
+                aria-label="Next page"
+              >
+                Older →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ══ RIGHT pane: starts from the very top ══ */}
