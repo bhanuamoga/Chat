@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowUp, Paperclip, Reply, Star, Trash2, X } from "lucide-react";
+import { Paperclip, Reply, Send, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -280,25 +280,30 @@ export function ThreadView({
           This conversation is in Trash — nothing can be replied here.
         </div>
       ) : (
-        <div className="border-t border-border p-3">
-          <div className="mx-auto max-w-3xl overflow-hidden rounded-xl border border-border bg-card shadow-md focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/10">
-            <div className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground">
-              <Reply className="size-3.5" />
-              Reply to <span className="font-medium text-foreground">{replyTo}</span>
-              <button
-                className="ml-auto rounded-md px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-primary transition-colors hover:bg-primary/10"
-                onClick={() => setShowCcBcc((v) => !v)}
+        <div className="border-t border-border bg-background/60 px-3 py-3 sm:px-4">
+          <div className="mx-auto w-full max-w-5xl rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow focus-within:border-primary/50 focus-within:shadow-md focus-within:ring-1 focus-within:ring-primary/20">
+            {/* row 1 — who we're replying to */}
+            <div className="flex items-center gap-2 text-sm">
+              <Reply className="size-4 text-primary" />
+              <span className="text-muted-foreground">Reply to</span>
+              <span className="truncate font-medium text-foreground">{replyTo}</span>
+              <Button
+                variant="ghost"
+                size="sm"
                 type="button"
+                onClick={() => setShowCcBcc((v) => !v)}
+                className="ml-auto h-7 px-2 text-xs font-semibold text-primary"
               >
                 {showCcBcc ? "− Cc/Bcc" : "+ Cc/Bcc"}
-              </button>
+              </Button>
             </div>
             {showCcBcc && (
-              <div className="grid gap-1.5 border-b border-border/60 px-3 py-2 sm:grid-cols-2">
-                <Input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="Cc — name@gmail.com" className="h-8 text-xs" />
-                <Input value={bcc} onChange={(e) => setBcc(e.target.value)} placeholder="Bcc — name@gmail.com" className="h-8 text-xs" />
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <Input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="Cc — name@gmail.com" className="h-9 text-sm" />
+                <Input value={bcc} onChange={(e) => setBcc(e.target.value)} placeholder="Bcc — name@gmail.com" className="h-9 text-sm" />
               </div>
             )}
+            {/* row 2 — the message */}
             <ChatTextarea
               value={reply}
               onChange={(e) => setReply(e.target.value)}
@@ -308,13 +313,24 @@ export function ThreadView({
                   sendReply();
                 }
               }}
-              placeholder="Type your reply… (Ctrl/⌘ + Enter to send)"
-              className="w-full text-sm placeholder:text-muted-foreground/60"
+              placeholder="Type your reply…"
+              className="mt-2 w-full text-sm placeholder:text-muted-foreground/60"
             />
-            <div className="flex items-center justify-between px-3 pb-3 pt-1">
-              <span className="select-none text-[11px] text-muted-foreground/70">Ctrl/⌘ + Enter to send · stays in the same Gmail thread</span>
-              <Button size="sm" onClick={sendReply} disabled={!reply.trim() || sending || !messages} className="h-9 rounded-full px-5 text-sm font-semibold shadow-sm">
-                {sending ? "Sending…" : "Send"} <ArrowUp className="ml-1.5 size-4" />
+            {/* row 3 — hint + send */}
+            <div className="mt-2 flex items-center gap-3 border-t border-border/60 pt-3">
+              <span className="hidden select-none text-xs text-muted-foreground/70 sm:inline">
+                <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-sans text-[10px]">Ctrl</kbd>
+                {" + "}
+                <kbd className="rounded border border-border bg-muted px-1 py-0.5 font-sans text-[10px]">Enter</kbd>
+                {" to send · stays in the same Gmail thread"}
+              </span>
+              <Button
+                onClick={sendReply}
+                disabled={!reply.trim() || sending || !messages}
+                className="ml-auto h-9 gap-2 rounded-md px-4 text-sm font-medium shadow-sm"
+              >
+                {sending ? "Sending…" : "Send"}
+                {!sending && <Send className="size-4" />}
               </Button>
             </div>
           </div>
