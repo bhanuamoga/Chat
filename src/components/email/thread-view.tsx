@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowUp, Paperclip, Reply, Star, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUp, Paperclip, Reply, Star, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -129,11 +129,13 @@ export function ThreadView({
   account,
   onRefreshed,
   onTrash,
+  onBack,
 }: {
   thread: EmailThreadRow;
   account: EmailAccountClient;
   onRefreshed: () => void;
   onTrash?: () => void;
+  onBack?: () => void;
 }) {
   const [messages, setMessages] = useState<EmailMessage[] | null>(null);
   const [reply, setReply] = useState("");
@@ -201,7 +203,16 @@ export function ThreadView({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* subject header — own bar so the right pane owns its full height */}
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+      <div className="flex items-center gap-2 border-b border-border px-2 py-2 sm:px-4">
+        {onBack && (
+          <button
+            onClick={onBack}
+            aria-label="Back to list"
+            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <ArrowLeft className="size-4" />
+          </button>
+        )}
         <h2 className="truncate text-base font-semibold text-foreground">{subject || "(no subject)"}</h2>
         {thread.count > 1 && (
           <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{thread.count}</span>

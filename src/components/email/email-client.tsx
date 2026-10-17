@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * Gmail-style Email client.
- * Left pane (mobile: full width): account + sync + settings on top,
- * search bar, New email button, folder chips, then the thread list.
- * Right pane starts from the very top with the open conversation.
+ * Gmail layout:
+ *  LEFT  — folder navigation with total counts (Inbox/Sent/Drafts/Trash/Spam)
+ *  RIGHT — search+compose row, sync/settings, All/Unread/Read tabs, and the
+ *          paginated email list (50/page). Clicking a thread opens the
+ *          conversation fullscreen on the right with a back arrow.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -25,6 +26,7 @@ import {
   Loader2,
   Search,
   X,
+  PanelLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -64,6 +66,8 @@ interface SyncProgress {
   boxIndex: number;
 }
 
+type FolderCounts = Record<string, number>;
+
 /* ------------------------------------------------------------- shell */
 
 export function EmailClient() {
@@ -73,6 +77,7 @@ export function EmailClient() {
   const [tab, setTab] = useState<"all" | "unread" | "read">("all");
   const [page, setPage] = useState(1);
   const [pageInfo, setPageInfo] = useState<{ total: number; totalPages: number; perPage: number }>({ total: 0, totalPages: 1, perPage: 50 });
+  const [folderCounts, setFolderCounts] = useState<FolderCounts>({});
   const [query, setQuery] = useState("");
   const [qDebounced, setQDebounced] = useState("");
   const [threads, setThreads] = useState<EmailThreadRow[]>([]);
@@ -82,11 +87,13 @@ export function EmailClient() {
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
-  const [mobileThread, setMobileThread] = useState(false);
+  const [navOpen, setNavOpen] = useState(false); // mobile folder overlay
   const [draftSeed, setDraftSeed] = useState<{ threadKey: string; to: string; cc: string; subject: string; text: string } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const folderRef = useRef(folder);
   folderRef.current = folder;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
 
   const activeAccount = useMemo(
     () => (accounts ?? []).find((a) => a.id === accountId) ?? (accounts ?? []).find((a) => a.isDefault) ?? null,
@@ -115,7 +122,7 @@ export function EmailClient() {
     return () => clearTimeout(t);
   }, [query]);
 
-  /* --------- thread list --------- */
+  /* --------- thread list (+ counts) --------- */
   const loadThreads = useCallback(
     async (silent = false) => {
       if (!activeAccount) return;
@@ -123,12 +130,14 @@ export function EmailClient() {
       try {
         const params = new URLSearchParams({ accountId: activeAccount.id, folder, state: tab, page: String(page) });
         if (qDebounced) params.set("q", qDebounced);
+        if (selectedRef.current) return; // a conversation is open — don't churn the list behind it
         const res = await fetch(`/api/email/messages?${params}`);
         if (res.ok) {
           const data = await res.json();
           setThreads(data.threads ?? []);
           setPageInfo({ total: data.total ?? 0, totalPages: data.totalPages ?? 1, perPage: data.perPage ?? 50 });
-          if (data.page && data.page !== page) setPage(data.page); // clamp server-side
+          if (data.folderCounts) setFolderCounts(data.folderCounts);
+          if (data.page && data.page !== page) setPage(data.page);
         }
       } finally {
         setListLoading(false);
@@ -139,19 +148,8 @@ export function EmailClient() {
 
   useEffect(() => {
     if (!activeAccount) return;
-    setSelected(null);
-    setMobileThread(false);
     loadThreads();
   }, [activeAccount?.id, folder, tab, page, qDebounced]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const switchFolder = useCallback((f: EmailFolderId) => {
-    setFolder(f);
-    setPage(1);
-  }, []);
-  const switchTab = useCallback((t: "all" | "unread" | "read") => {
-    setTab(t);
-    setPage(1);
-  }, []);
 
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -160,6 +158,17 @@ export function EmailClient() {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [loadThreads]);
+
+  const switchFolder = useCallback((f: EmailFolderId) => {
+    setFolder(f);
+    setPage(1);
+    setSelected(null);
+    setNavOpen(false);
+  }, []);
+  const switchTab = useCallback((t: "all" | "unread" | "read") => {
+    setTab(t);
+    setPage(1);
+  }, []);
 
   /* --------- streaming sync --------- */
   const sync = useCallback(async () => {
@@ -241,9 +250,9 @@ export function EmailClient() {
       return;
     }
     setSelected(t);
-    setMobileThread(true);
     if (t.unread) {
       setThreads((prev) => prev.map((x) => (x.threadKey === t.threadKey ? { ...x, unread: false } : x)));
+      setFolderCounts((c) => (c.unreadInbox ? { ...c, unreadInbox: Math.max(0, c.unreadInbox - 1) } : c));
       fetch("/api/email/messages", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -265,7 +274,7 @@ export function EmailClient() {
   const deleteThread = useCallback((t: EmailThreadRow) => {
     setThreads((prev) => prev.filter((x) => x.threadKey !== t.threadKey));
     setSelected((cur) => (cur?.threadKey === t.threadKey ? null : cur));
-    setMobileThread((m) => (selected?.threadKey === t.threadKey ? false : m));
+    setPageInfo((pi) => ({ ...pi, total: Math.max(0, pi.total - 1) }));
     fetch("/api/email/messages", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -274,9 +283,10 @@ export function EmailClient() {
       .then(async (r) => {
         const d = await r.json().catch(() => ({}));
         toast(d.mode === "purge" ? "Deleted forever" : "Moved to Trash");
+        loadThreads(true);
       })
       .catch(() => undefined);
-  }, [selected]);
+  }, [loadThreads]);
 
   /* ------------------------- sync progress % ------------------------- */
   const syncPct = useMemo(() => {
@@ -314,32 +324,118 @@ export function EmailClient() {
     );
   }
 
-  const unreadInInbox = threads.filter((t) => t.unread).length;
+  const folderNav = (compact?: boolean) => (
+    <nav className={cn("flex flex-col gap-0.5 p-2", compact && "px-3")}>
+      {FOLDERS.map((f) => {
+        const total = folderCounts?.[f.id] ?? 0;
+        const unread = f.id === "inbox" ? folderCounts?.unreadInbox ?? 0 : 0;
+        const active = folder === f.id;
+        return (
+          <button
+            key={f.id}
+            onClick={() => switchFolder(f.id)}
+            className={cn(
+              "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors",
+              active ? "bg-accent font-semibold text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+            )}
+          >
+            <f.icon className={cn("size-4 shrink-0", active && "text-primary")} />
+            <span className="min-w-0 flex-1 truncate text-left">{f.label}</span>
+            {unread > 0 && <span className="shrink-0 text-[11px] font-bold text-primary">{unread}</span>}
+            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/70">{total}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
 
   /* ---------------------------------------- layout ---------------------------------------- */
   return (
     <div className="flex h-full min-h-0 flex-1">
-      {/* ══ LEFT pane: toolbar / search / compose / folders / list ══ */}
-      <div className={cn("w-full min-w-0 flex-col border-r border-border md:flex md:w-[400px] md:shrink-0", mobileThread ? "hidden" : "flex")}>
-        {/* row 1 — account · (sync %, settings) on the right */}
-        <div className="flex items-center gap-1 px-2 pb-1 pt-2">
-          <button
-            onClick={() => activeAccount && setAccountsOpen(true)}
-            className="flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-accent"
-            title={`Email account: ${activeAccount?.emailAddress ?? "none"}`}
+      {/* ══ LEFT — folder navigation (Gmail style, totals on the right) ══ */}
+      <aside className="hidden w-52 shrink-0 flex-col border-r border-border md:flex">
+        {/* account card */}
+        <button
+          onClick={() => activeAccount && setAccountsOpen(true)}
+          className="mx-2 mb-2 mt-2 flex items-center gap-2 rounded-xl border border-border bg-card px-2.5 py-2 text-left transition-colors hover:bg-accent/60"
+          title="Email account"
+        >
+          <span
+            className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+            style={{ background: colorFor(activeAccount?.emailAddress ?? "?") }}
           >
-            <span
-              className="flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
-              style={{ background: colorFor(activeAccount?.emailAddress ?? "?") }}
+            {(activeAccount?.emailAddress ?? "?").slice(0, 1).toUpperCase()}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-[13px] font-semibold text-foreground">{activeAccount?.name || "Account"}</span>
+            <span className="block truncate text-[11px] text-muted-foreground">{activeAccount?.emailAddress ?? "configure…"}</span>
+          </span>
+        </button>
+        <div className="flex-1 overflow-y-auto">{folderNav()}</div>
+      </aside>
+
+      {/* mobile folder overlay */}
+      {navOpen && (
+        <div className="fixed inset-0 z-50 md:hidden" onClick={() => setNavOpen(false)}>
+          <div className="absolute inset-0 bg-black/30" />
+          <div className="absolute inset-y-0 left-0 w-64 border-r border-border bg-background shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-3 py-2.5">
+              <span className="text-sm font-semibold">Folders</span>
+              <Button variant="ghost" size="icon" onClick={() => setNavOpen(false)} aria-label="Close">
+                <X className="size-4" />
+              </Button>
+            </div>
+            {folderNav(true)}
+          </div>
+        </div>
+      )}
+
+      {/* ══ RIGHT — header rows + list OR open conversation ══ */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {selected ? (
+          <ThreadView
+            key={selected.threadKey + selected.folder}
+            thread={selected}
+            account={activeAccount!}
+            onRefreshed={() => loadThreads(true)}
+            onTrash={() => deleteThread(selected)}
+            onBack={() => setSelected(null)}
+          />
+        ) : (
+          <>
+          {/* header row: nav menu (mobile) · search · New email · sync · settings */}
+          <div className="flex items-center gap-2 border-b border-border px-2 py-2">
+            <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setNavOpen(true)} aria-label="Folders">
+              <PanelLeft className="size-4" />
+            </Button>
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 focus-within:border-primary/50">
+              <Search className="size-4 shrink-0 text-muted-foreground" />
+              <input
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setPage(1);
+                }}
+                placeholder={`Search ${FOLDERS.find((x) => x.id === folder)?.label.toLowerCase() ?? "mail"}`}
+                disabled={!activeAccount}
+                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/70"
+              />
+              {query && (
+                <button onClick={() => setQuery("")} aria-label="Clear search" className="text-muted-foreground hover:text-foreground">
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+            <Button
+              onClick={() => {
+                setDraftSeed(null);
+                setComposeOpen(true);
+              }}
+              disabled={!activeAccount}
+              className="shrink-0 gap-2 rounded-xl text-sm font-semibold shadow-md"
             >
-              {(activeAccount?.emailAddress ?? "?").slice(0, 1).toUpperCase()}
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-[13px] font-semibold text-foreground">{activeAccount?.name || "Account"}</span>
-              <span className="block truncate text-[11px] text-muted-foreground">{activeAccount?.emailAddress ?? "configure email…"}</span>
-            </span>
-          </button>
-          <div className="ml-auto flex shrink-0 items-center">
+              <PenSquare className="size-4" /> <span className="hidden sm:inline">New email</span>
+            </Button>
             <Button variant="ghost" size="icon" onClick={sync} disabled={syncing || !activeAccount} title="Sync from Gmail">
               {syncing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
             </Button>
@@ -348,236 +444,148 @@ export function EmailClient() {
               <Settings className="size-4" />
             </Button>
           </div>
-        </div>
 
-        {/* row 2 — search + New email in ONE compact row */}
-        <div className="flex items-center gap-2 px-2 pb-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 focus-within:border-primary/50">
-            <Search className="size-4 shrink-0 text-muted-foreground" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search mail…"
-              className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/70"
-            />
-            {query && (
-              <button onClick={() => setQuery("")} aria-label="Clear search" className="text-muted-foreground hover:text-foreground">
-                <X className="size-3.5" />
-              </button>
-            )}
-          </div>
-          <Button
-            onClick={() => {
-              setDraftSeed(null);
-              setComposeOpen(true);
-            }}
-            disabled={!activeAccount}
-            className="h-10 shrink-0 gap-2 rounded-xl text-sm font-semibold shadow-md"
-          >
-            <PenSquare className="size-4" /> <span className="hidden sm:inline">New email</span>
-          </Button>
-        </div>
-
-        {/* row 4 — folders as chips (mobile + desktop, one simple strip) */}
-        <div className="flex gap-1 overflow-x-auto px-2 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {FOLDERS.map((f) => {
-            const badge = f.id === "inbox" && folder === "inbox" && !qDebounced && unreadInInbox > 0 ? unreadInInbox : 0;
-            return (
+          {/* All / Unread / Read tabs */}
+          <div className="grid grid-cols-3 gap-1 border-b border-border px-2 py-1.5">
+            {(
+              [
+                { id: "all", label: "All" },
+                { id: "unread", label: "Unread" },
+                { id: "read", label: "Read" },
+              ] as const
+            ).map((t) => (
               <button
-                key={f.id}
-                onClick={() => switchFolder(f.id)}
+                key={t.id}
+                onClick={() => switchTab(t.id)}
                 className={cn(
-                  "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                  folder === f.id
-                    ? "border-primary/50 bg-primary/10 text-foreground"
-                    : "border-border text-muted-foreground hover:bg-accent"
+                  "rounded-lg px-2 py-1.5 text-xs font-medium transition-colors",
+                  tab === t.id ? "bg-primary text-primary-foreground" : "bg-muted/60 text-muted-foreground hover:bg-accent hover:text-foreground"
                 )}
               >
-                <f.icon className="size-3.5" />
-                {f.label}
-                {badge > 0 && <span className="rounded-full bg-primary px-1.5 py-px text-[10px] font-bold text-primary-foreground">{badge}</span>}
+                {t.label}
               </button>
-            );
-          })}
-        </div>
-
-        {/* read state tabs — All / Unread / Read (Gmail-style) */}
-        <div className="grid grid-cols-3 gap-1 px-2 pb-1.5 pt-0.5">
-          {(
-            [
-              { id: "all", label: "All" },
-              { id: "unread", label: "Unread" },
-              { id: "read", label: "Read" },
-            ] as const
-          ).map((t) => (
-            <button
-              key={t.id}
-              onClick={() => switchTab(t.id)}
-              className={cn(
-                "rounded-lg px-2 py-1.5 text-xs font-medium transition-colors",
-                tab === t.id ? "bg-primary text-primary-foreground" : "bg-muted/60 text-muted-foreground hover:bg-accent hover:text-foreground"
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* sync progress */}
-        {syncing && (
-          <div className="px-2 pb-1.5">
-            <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
-              <div className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out" style={{ width: `${syncPct}%` }} />
-            </div>
-            <div className="mt-1 truncate text-[11px] text-muted-foreground">{syncLabel}</div>
+            ))}
           </div>
-        )}
 
-        {/* row 5 — thread list */}
-        <div className="flex-1 overflow-y-auto border-t border-border/60">
-          {listLoading && !threads.length ? (
-            <div className="space-y-1 p-2">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full rounded-xl" />
-              ))}
+          {/* sync progress */}
+          {syncing && (
+            <div className="px-3 pb-1 pt-2">
+              <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out" style={{ width: `${syncPct}%` }} />
+              </div>
+              <div className="mt-1 truncate text-[11px] text-muted-foreground">{syncLabel}</div>
             </div>
-          ) : threads.length === 0 ? (
-            <div className="flex flex-col items-center px-6 py-16 text-center text-sm text-muted-foreground">
-              <InboxIcon className="mb-3 size-8 opacity-40" />
-              {qDebounced
-                ? `No matches for “${qDebounced}”.`
-                : folder === "inbox"
-                  ? "No emails yet — hit Sync to pull from Gmail."
-                  : `Nothing in ${FOLDERS.find((x) => x.id === folder)?.label ?? folder}.`}
-            </div>
-          ) : (
-            threads.map((t) => {
-              const names = t.participants.map((p) => p.name || p.address).join(", ");
-              const star = t.isStarred;
-              return (
-                <div
-                  key={t.threadKey + t.folder}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => openThread(t)}
-                  onKeyDown={(e) => e.key === "Enter" && openThread(t)}
-                  className={cn(
-                    "flex w-full cursor-pointer gap-3 border-b border-border/60 px-3 py-2.5 text-left transition-colors hover:bg-accent/50",
-                    selected?.threadKey === t.threadKey && selected?.folder === t.folder && "bg-accent",
-                    t.unread && "bg-primary/[0.04]"
-                  )}
-                >
-                  <span
-                    className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
-                    style={{ background: colorFor(t.participants[0]?.address || t.subject) }}
-                  >
-                    {(names[0] || "?").toUpperCase()}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5">
-                      <span className={cn("truncate text-[13px]", t.unread ? "font-bold text-foreground" : "font-medium text-foreground/85")}>{names || "(unknown)"}</span>
-                      {t.count > 1 && <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] font-bold text-muted-foreground">{t.count}</span>}
-                      <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{fmtDate(t.lastDate)}</span>
-                    </span>
-                    <span className="mt-0.5 flex items-center gap-1.5">
-                      <span className={cn("truncate text-xs", t.unread ? "font-semibold text-foreground" : "text-foreground/75")}>{t.subject}</span>
-                      {t.hasAttachments && <Paperclip className="size-3 shrink-0 text-muted-foreground" />}
-                    </span>
-                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">{t.snippet}</span>
-                  </span>
-                  <div className="flex shrink-0 flex-col items-center gap-1">
-                    <div className="flex items-center gap-0.5">
-                      <button
-                        className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-amber-400"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleStar(t, !star);
-                        }}
-                        aria-label="Star"
-                      >
-                        <Star className={cn("size-4", star && "fill-amber-400 text-amber-400")} />
-                      </button>
-                      <button
-                        className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-destructive"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteThread(t);
-                        }}
-                        aria-label={t.folder === "trash" ? "Delete forever" : "Move to trash"}
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </div>
-                    {t.unread && <Circle className="size-2 fill-primary text-primary" />}
-                  </div>
-                </div>
-              );
-            })
           )}
-        </div>
 
-        {/* pagination — Gmail style 50/page with total thread count */}
-        {pageInfo.total > 0 && (
-          <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground">
-            <span className="tabular-nums">
-              {pageInfo.total} thread{pageInfo.total === 1 ? "" : "s"}
-              {tab !== "all" ? ` · ${tab}` : ""}
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                className="rounded-md px-2 py-1 transition-colors hover:bg-accent disabled:opacity-40"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                aria-label="Previous page"
-              >
-                ← Newer
-              </button>
+          {/* list */}
+          <div className="flex-1 overflow-y-auto">
+            {listLoading && !threads.length ? (
+              <div className="space-y-1 p-2">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="h-16 w-full rounded-xl" />
+                ))}
+              </div>
+            ) : threads.length === 0 ? (
+              <div className="flex flex-col items-center px-6 py-16 text-center text-sm text-muted-foreground">
+                <InboxIcon className="mb-3 size-8 opacity-40" />
+                {qDebounced
+                  ? `No matches for “${qDebounced}”.`
+                  : folder === "inbox"
+                    ? "No emails yet — hit Sync to pull from Gmail."
+                    : `Nothing in ${FOLDERS.find((x) => x.id === folder)?.label ?? folder}.`}
+              </div>
+            ) : (
+              threads.map((t) => {
+                const names = t.participants.map((p) => p.name || p.address).join(", ");
+                const star = t.isStarred;
+                return (
+                  <div
+                    key={t.threadKey + t.folder}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openThread(t)}
+                    onKeyDown={(e) => e.key === "Enter" && openThread(t)}
+                    className={cn(
+                      "flex w-full cursor-pointer gap-3 border-b border-border/60 px-3 py-2.5 text-left transition-colors hover:bg-accent/50",
+                      t.unread && "bg-primary/[0.04]"
+                    )}
+                  >
+                    <span
+                      className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+                      style={{ background: colorFor(t.participants[0]?.address || t.subject) }}
+                    >
+                      {(names[0] || "?").toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        <span className={cn("truncate text-[13px]", t.unread ? "font-bold text-foreground" : "font-medium text-foreground/85")}>{names || "(unknown)"}</span>
+                        {t.count > 1 && <span className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] font-bold text-muted-foreground">{t.count}</span>}
+                        <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{fmtDate(t.lastDate)}</span>
+                      </span>
+                      <span className="mt-0.5 flex items-center gap-1.5">
+                        <span className={cn("truncate text-xs", t.unread ? "font-semibold text-foreground" : "text-foreground/75")}>{t.subject}</span>
+                        {t.hasAttachments && <Paperclip className="size-3 shrink-0 text-muted-foreground" />}
+                      </span>
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">{t.snippet}</span>
+                    </span>
+                    <div className="flex shrink-0 flex-col items-center gap-1">
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-amber-400"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleStar(t, !star);
+                          }}
+                          aria-label="Star"
+                        >
+                          <Star className={cn("size-4", star && "fill-amber-400 text-amber-400")} />
+                        </button>
+                        <button
+                          className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteThread(t);
+                          }}
+                          aria-label={t.folder === "trash" ? "Delete forever" : "Move to trash"}
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
+                      {t.unread && <Circle className="size-2 fill-primary text-primary" />}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* pagination — 50/page with totals */}
+          {pageInfo.total > 0 && (
+            <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground">
               <span className="tabular-nums">
-                {page}/{pageInfo.totalPages}
+                {pageInfo.total} thread{pageInfo.total === 1 ? "" : "s"}
+                {tab !== "all" ? ` · ${tab}` : ""}
               </span>
-              <button
-                className="rounded-md px-2 py-1 transition-colors hover:bg-accent disabled:opacity-40"
-                onClick={() => setPage((p) => Math.min(pageInfo.totalPages, p + 1))}
-                disabled={page >= pageInfo.totalPages}
-                aria-label="Next page"
-              >
-                Older →
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  className="rounded-md px-2 py-1 transition-colors hover:bg-accent disabled:opacity-40"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                >
+                  ← Newer
+                </button>
+                <span className="tabular-nums">{page}/{pageInfo.totalPages}</span>
+                <button
+                  className="rounded-md px-2 py-1 transition-colors hover:bg-accent disabled:opacity-40"
+                  onClick={() => setPage((p) => Math.min(pageInfo.totalPages, p + 1))}
+                  disabled={page >= pageInfo.totalPages}
+                >
+                  Older →
+                </button>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* ══ RIGHT pane: starts from the very top ══ */}
-      <div className={cn("min-w-0 flex-1 flex-col", mobileThread ? "flex" : "hidden md:flex")}>
-        {selected ? (
-          <>
-            <div className="flex items-center gap-1 border-b border-border px-2 py-2 md:hidden">
-              <Button variant="ghost" size="icon" onClick={() => setMobileThread(false)} aria-label="Back to list">
-                <ArrowLeft className="size-4" />
-              </Button>
-              <span className="truncate text-sm font-medium">{selected.subject}</span>
-              <button
-                className="ml-auto rounded p-1.5 text-muted-foreground hover:text-destructive"
-                onClick={() => deleteThread(selected)}
-                aria-label="Delete thread"
-              >
-                <Trash2 className="size-4" />
-              </button>
-            </div>
-            <ThreadView
-              key={selected.threadKey + selected.folder}
-              thread={selected}
-              account={activeAccount!}
-              onRefreshed={() => loadThreads(true)}
-              onTrash={() => deleteThread(selected)}
-            />
+          )}
           </>
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center text-sm text-muted-foreground">
-            <InboxIcon className="mb-3 size-10 opacity-30" />
-            Select a conversation to read
-          </div>
         )}
       </div>
 
@@ -589,7 +597,7 @@ export function EmailClient() {
         }}
         disabled={!activeAccount}
         aria-label="New email"
-        className={cn("fixed bottom-5 right-5 z-40 flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-xl transition-transform active:scale-95 md:hidden", mobileThread && "hidden")}
+        className={cn("fixed bottom-5 right-5 z-40 flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-xl transition-transform active:scale-95 md:hidden", selected && "hidden")}
       >
         <PenSquare className="size-6" />
       </button>
