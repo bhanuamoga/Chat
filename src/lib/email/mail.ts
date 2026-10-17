@@ -72,7 +72,7 @@ export interface SyncedEmail {
   bodyText: string;
   bodyHtml: string | null;
   date: Date;
-  folder: "inbox" | "sent";
+  folder: "inbox" | "sent" | "drafts" | "trash" | "spam";
   isRead: boolean;
   isStarred: boolean;
   hasAttachments: boolean;
@@ -104,74 +104,176 @@ export async function testImapConnection(cfg: Pick<EmailAccount, "emailAddress" 
   await client.logout().catch(() => undefined);
 }
 
-async function fetchBox(client: ImapFlow, path: string, folder: "inbox" | "sent"): Promise<SyncedEmail[]> {
-  const lock = await client.getMailboxLock(path);
+/** Parse one raw RFC822 message into our row shape. */
+async function parseRaw(
+  source: Buffer,
+  folder: SyncedEmail["folder"],
+  flags: ReadonlySet<string> | undefined,
+  uid: number,
+): Promise<SyncedEmail> {
+  const parsed: ParsedMail = await simpleParser(source);
+  const messageId = normId(String(parsed.messageId || parsed.inReplyTo || "")) || `local-${uid}-${folder}`;
+  const refs = refChain(parsed.references);
+  const subject = parsed.subject || "(no subject)";
+  const bodyText = parsed.text?.trim() || "";
+  const bodyHtml = typeof parsed.html === "string" ? sanitizeEmailHtml(parsed.html) : null;
+  const from = parsed.from?.value?.[0];
+  return {
+    messageId,
+    threadKey: threadKeyOf(messageId, refs),
+    inReplyTo: parsed.inReplyTo ? normId(String(parsed.inReplyTo)) : null,
+    refIds: refs.join(" "),
+    fromAddress: String(from?.address || "").toLowerCase(),
+    fromName: from?.name || "",
+    toAddresses: addressList(parsed.to),
+    ccAddresses: addressList(parsed.cc),
+    subject,
+    snippet: snippetOf(bodyText, bodyHtml || ""),
+    bodyText,
+    bodyHtml,
+    date: parsed.date ? new Date(parsed.date) : new Date(),
+    folder,
+    isRead: flags?.has("\\Seen") ?? false,
+    isStarred: flags?.has("\\Flagged") ?? false,
+    hasAttachments: (parsed.attachments?.length ?? 0) > 0,
+    attachments: (parsed.attachments ?? [])
+      .filter((x) => x.filename)
+      .map((x) => ({ filename: x.filename as string, size: x.size, mime: x.contentType })),
+  };
+}
+
+/** Gmail (and standard IMAP) special-use mailboxes, in sync order. */
+const SPECIAL_BOXES: { folder: SyncedEmail["folder"]; special: string; fallback: string }[] = [
+  { folder: "inbox", special: "\\Inbox", fallback: "INBOX" },
+  { folder: "sent", special: "\\Sent", fallback: "[Gmail]/Sent Mail" },
+  { folder: "drafts", special: "\\Drafts", fallback: "[Gmail]/Drafts" },
+  { folder: "trash", special: "\\Trash", fallback: "[Gmail]/Trash" },
+  { folder: "spam", special: "\\Junk", fallback: "[Gmail]/Spam" },
+];
+
+export type SyncFolder = SyncedEmail["folder"];
+
+export interface BoxSyncProgress {
+  phase: "connect" | "box" | "box-done";
+  folder: SyncFolder;
+  path?: string;
+  fetched?: number;
+  total?: number;
+}
+
+/** Resolve a mailbox path by special-use flag, falling back to Gmail names. */
+function resolveBoxes(clientBoxes: Awaited<ReturnType<ImapFlow["list"]>>): Map<SyncFolder, string> {
+  const map = new Map<SyncFolder, string>();
+  for (const spec of SPECIAL_BOXES) {
+    const hit = spec.folder === "inbox"
+      ? clientBoxes.find((b) => b.path.toUpperCase() === "INBOX")
+      : clientBoxes.find((b) => b.specialUse === spec.special);
+    const path = hit?.path ?? (clientBoxes.some((b) => b.path === spec.fallback) ? spec.fallback : null);
+    if (path) map.set(spec.folder, path);
+  }
+  if (!map.has("inbox")) map.set("inbox", "INBOX");
+  return map;
+}
+
+/** Fetch the newest messages from every mailbox of the account, with progress. */
+export async function syncAccount(
+  account: EmailAccount,
+  onProgress?: (p: BoxSyncProgress) => void,
+): Promise<SyncedEmail[]> {
+  const client = makeClient(account);
+  onProgress?.({ phase: "connect", folder: "inbox" });
+  await client.connect();
   try {
-    const mailbox = await client.mailboxOpen(path, { readOnly: true });
-    const total = mailbox.exists || 0;
-    if (!total) return [];
-    const from = Math.max(1, total - SYNC_LIMIT_PER_BOX + 1);
+    let boxes = new Map<SyncFolder, string>();
+    try {
+      boxes = resolveBoxes(await client.list());
+    } catch {
+      boxes.set("inbox", "INBOX");
+    }
+
     const out: SyncedEmail[] = [];
-    for await (const msg of client.fetch(`${from}:${total}`, { envelope: true, source: true, flags: true })) {
-      if (!msg.source) continue;
+    for (const [folder, path] of boxes) {
+      onProgress?.({ phase: "box", folder, path });
       try {
-        const parsed: ParsedMail = await simpleParser(msg.source);
-        const messageId = normId(String(parsed.messageId || msg.envelope?.messageId || "")) || `local-${msg.uid}-${folder}`;
-        const refs = refChain(parsed.references);
-        const subject = parsed.subject || "(no subject)";
-        const bodyText = parsed.text?.trim() || "";
-        const bodyHtml = typeof parsed.html === "string" ? sanitizeEmailHtml(parsed.html) : null;
-        const from = parsed.from?.value?.[0];
-        out.push({
-          messageId,
-          threadKey: threadKeyOf(messageId, refs),
-          inReplyTo: parsed.inReplyTo ? normId(String(parsed.inReplyTo)) : null,
-          refIds: refs.join(" "),
-          fromAddress: String(from?.address || "").toLowerCase(),
-          fromName: from?.name || "",
-          toAddresses: addressList(parsed.to),
-          ccAddresses: addressList(parsed.cc),
-          subject,
-          snippet: snippetOf(bodyText, bodyHtml || ""),
-          bodyText,
-          bodyHtml,
-          date: parsed.date ? new Date(parsed.date) : (msg.envelope?.date ? new Date(msg.envelope.date) : new Date()),
-          folder,
-          isRead: msg.flags?.has("\\Seen") ?? false,
-          isStarred: msg.flags?.has("\\Flagged") ?? false,
-          hasAttachments: (parsed.attachments?.length ?? 0) > 0,
-          attachments: (parsed.attachments ?? [])
-            .filter((x) => x.filename)
-            .map((x) => ({ filename: x.filename as string, size: x.size, mime: x.contentType })),
-        });
-      } catch {
-        /* one bad message shouldn't kill the sync */
-      }
+        const lock = await client.getMailboxLock(path);
+        try {
+          const mailbox = await client.mailboxOpen(path, { readOnly: true });
+          const total = mailbox.exists || 0;
+          onProgress?.({ phase: "box", folder, path, fetched: 0, total });
+          if (total) {
+            const from = Math.max(1, total - SYNC_LIMIT_PER_BOX + 1);
+            let fetched = 0;
+            for await (const msg of client.fetch(`${from}:${total}`, { envelope: true, source: true, flags: true })) {
+              fetched += 1;
+              if (msg.source) {
+                try {
+                  out.push(await parseRaw(msg.source, folder, msg.flags, msg.uid));
+                } catch { /* one bad message shouldn't kill the sync */ }
+              }
+              if (fetched % 5 === 0 || fetched === total) {
+                onProgress?.({ phase: "box", folder, path, fetched, total });
+              }
+            }
+          }
+        } finally {
+          lock.release();
+        }
+      } catch { /* some servers deny listing some boxes; not fatal */ }
+      onProgress?.({ phase: "box-done", folder, path });
     }
     return out;
   } finally {
-    lock.release();
+    await client.logout().catch(() => undefined);
   }
 }
 
-/** Fetch the newest messages from INBOX + Sent for this account. */
-export async function syncAccount(account: EmailAccount): Promise<SyncedEmail[]> {
+/** Move messages (by Message-ID header) from a folder into Trash — Gmail MOVE. */
+export async function moveToTrashRemote(
+  account: EmailAccount,
+  messageIds: string[],
+  fromFolder: SyncFolder,
+): Promise<void> {
+  await boxMessageOpRemote(account, messageIds, fromFolder, "trash");
+}
+
+/** Permanently purge messages (by Message-ID header) from a mailbox. */
+export async function purgeRemote(
+  account: EmailAccount,
+  messageIds: string[],
+  fromFolder: SyncFolder,
+): Promise<void> {
+  await boxMessageOpRemote(account, messageIds, fromFolder, "purge");
+}
+
+async function boxMessageOpRemote(
+  account: EmailAccount,
+  messageIds: string[],
+  fromFolder: SyncFolder,
+  op: "trash" | "purge",
+): Promise<void> {
+  if (!messageIds.length) return;
   const client = makeClient(account);
   await client.connect();
   try {
-    let sentPath = "[Gmail]/Sent Mail";
+    const listed = await client.list().catch(() => []);
+    const boxes = resolveBoxes(listed);
+    const fromPath = boxes.get(fromFolder) ?? "INBOX";
+    const trashPath = boxes.get("trash") ?? "[Gmail]/Trash";
+    const lock = await client.getMailboxLock(fromPath);
     try {
-      const boxes = await client.list();
-      const sent = boxes.find((b) => b.specialUse === "\\Sent");
-      if (sent?.path) sentPath = sent.path;
-    } catch { /* keep the Gmail default */ }
-
-    const inbox = await fetchBox(client, "INBOX", "inbox");
-    let sent: SyncedEmail[] = [];
-    try {
-      sent = await fetchBox(client, sentPath, "sent");
-    } catch { /* some servers deny Sent listing; not fatal */ }
-    return [...inbox, ...sent];
+      await client.mailboxOpen(fromPath, { readOnly: false });
+      for (const id of messageIds) {
+        try {
+          const hits = (await client.search({ header: { "Message-ID": id.toLowerCase() } })) as readonly number[] | false | undefined;
+          if (!hits || !hits.length) continue;
+          const uids = [...hits];
+          if (op === "trash") await client.messageMove(uids, trashPath, { uid: true });
+          else await client.messageDelete(uids, { uid: true });
+        } catch { /* per-message best effort */ }
+      }
+    } finally {
+      lock.release();
+    }
   } finally {
     await client.logout().catch(() => undefined);
   }

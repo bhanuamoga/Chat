@@ -27,10 +27,10 @@ export interface EmailAttachmentMeta {
 export interface EmailThreadRow {
   threadKey: string;
   accountId: string;
-  folder: "inbox" | "sent";
+  folder: EmailFolderId;
   subject: string;
   snippet: string;
-  /** display names/addresses of the last senders */
+  /** collapse grouped conversation row — display names/addresses of the last senders */
   participants: EmailAddress[];
   lastDate: string;
   count: number;
@@ -53,7 +53,7 @@ export interface EmailMessage {
   bodyText: string;
   bodyHtml: string | null;
   date: string;
-  folder: "inbox" | "sent";
+  folder: EmailFolderId;
   isRead: boolean;
   isStarred: boolean;
   hasAttachments: boolean;
@@ -73,5 +73,10 @@ export interface SendEmailInput {
 export const EMAIL_FOLDERS = [
   { id: "inbox", label: "Inbox" },
   { id: "sent", label: "Sent" },
+  { id: "drafts", label: "Drafts" },
+  { id: "trash", label: "Trash" },
+  { id: "spam", label: "Spam" },
 ] as const;
 export type EmailFolderId = (typeof EMAIL_FOLDERS)[number]["id"];
+
+export const FOLDERS: EmailFolderId[] = EMAIL_FOLDERS.map((f) => f.id);

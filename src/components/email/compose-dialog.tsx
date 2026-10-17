@@ -1,7 +1,7 @@
 "use client";
 
 /** New email compose — sent over Gmail SMTP; starts a fresh thread. */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,15 +14,25 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+export interface ComposeInitial {
+  to?: string;
+  cc?: string;
+  subject?: string;
+  text?: string;
+}
+
 export function ComposeDialog({
   open,
   onOpenChange,
   accountId,
+  initial,
   onSent,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   accountId: string | null;
+  /** prefill (e.g. a synced Gmail draft being edited) */
+  initial?: ComposeInitial | null;
   onSent?: () => void;
 }) {
   const [to, setTo] = useState("");
@@ -30,6 +40,17 @@ export function ComposeDialog({
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+
+  /* prefill when a draft opens the dialog */
+  useEffect(() => {
+    if (open) {
+      setTo(initial?.to ?? "");
+      setCc(initial?.cc ?? "");
+      setSubject(initial?.subject ?? "");
+      setBody(initial?.text ?? "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const send = async () => {
     if (!accountId || !to.trim() || !body.trim() || sending) return;
@@ -43,10 +64,6 @@ export function ComposeDialog({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return toast.error(data.error || "Send failed");
       toast.success("Email sent");
-      setTo("");
-      setCc("");
-      setSubject("");
-      setBody("");
       onOpenChange(false);
       onSent?.();
     } finally {

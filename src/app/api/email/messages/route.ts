@@ -1,7 +1,9 @@
 /**
- * GET  /api/email/messages?accountId=&folder=inbox|sent   → thread list (grouped)
- * GET  /api/email/messages?accountId=&thread=KEY          → full thread (asc)
- * PATCH /api/email/messages { accountId, threadKey, isRead?, isStarred? }
+ * Email messages API:
+ * GET   ?accountId=&folder=inbox|sent|drafts|trash|spam → grouped thread list
+ * GET   ?accountId=&thread=KEY                         → full thread (asc)
+ * PATCH { accountId, threadKey, isRead?, isStarred? }  → flags (+ mirrors \Seen to Gmail)
+ * DELETE { accountId, threadKey, folder, mode? }       → move to Trash / purge forever
  */
 import { NextRequest, NextResponse } from "next/server";
 import { and, asc, desc, eq } from "drizzle-orm";
@@ -9,8 +11,8 @@ import { db } from "@/db";
 import { emailAccounts, emails } from "@/db/schema";
 import { auth } from "@/auth";
 import { ensureEmailSchema } from "@/lib/email/ddl";
-import { setSeenFlag } from "@/lib/email/mail";
-import type { EmailMessage, EmailThreadRow } from "@/lib/email/types";
+import { setSeenFlag, moveToTrashRemote, purgeRemote, type SyncFolder } from "@/lib/email/mail";
+import type { EmailFolderId, EmailMessage, EmailThreadRow } from "@/lib/email/types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -34,7 +36,7 @@ const toMessage = (r: typeof emails.$inferSelect): EmailMessage => ({
   bodyText: r.bodyText,
   bodyHtml: r.bodyHtml,
   date: r.date.toISOString(),
-  folder: (r.folder as "inbox" | "sent") || "inbox",
+  folder: ((r.folder as EmailFolderId) || "inbox") as EmailFolderId,
   isRead: r.isRead,
   isStarred: r.isStarred,
   hasAttachments: r.hasAttachments,
@@ -60,7 +62,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ messages: rows.map(toMessage) });
   }
 
-  const folder = (q.get("folder") || "inbox") as "inbox" | "sent";
+  const folder = (q.get("folder") || "inbox") as EmailFolderId;
   const rows = await db
     .select()
     .from(emails)
@@ -106,7 +108,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ threads });
 }
 
-/** Mark a thread read/unread or star/unstar; also mirrors \\Seen to Gmail (best effort). */
+/** Mark a thread read/unread or star/unstar; also mirrors \Seen to Gmail (best effort). */
 export async function PATCH(req: NextRequest) {
   const userId = await requireUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -146,4 +148,65 @@ export async function PATCH(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, updated: updated.length });
+}
+
+/**
+ * DELETE { accountId, threadKey, folder, mode? }
+ * mode "trash" (default for all folders except trash) → IMAP MOVE to Trash + local flip
+ * mode "purge" (default when called on trash)          → IMAP expunge + local delete
+ */
+export async function DELETE(req: NextRequest) {
+  const userId = await requireUserId();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  await ensureEmailSchema();
+
+  const body: Record<string, unknown> = await req.json().catch(() => ({}));
+  const accountId = String(body.accountId || "");
+  const threadKey = String(body.threadKey || "");
+  const folder = String(body.folder || "inbox") as SyncFolder;
+  const modeOverride = String(body.mode || "");
+  if (!accountId || !threadKey) return NextResponse.json({ error: "accountId + threadKey required" }, { status: 400 });
+
+  const rows = await db
+    .select({ messageId: emails.messageId, folder: emails.folder })
+    .from(emails)
+    .where(and(eq(emails.userId, userId), eq(emails.accountId, accountId), eq(emails.threadKey, threadKey)));
+  if (!rows.length) return NextResponse.json({ error: "Nothing to delete" }, { status: 404 });
+
+  const [account] = await db
+    .select()
+    .from(emailAccounts)
+    .where(and(eq(emailAccounts.id, accountId), eq(emailAccounts.userId, userId)))
+    .limit(1);
+
+  const purge = modeOverride ? modeOverride === "purge" : folder === "trash";
+
+  // mirror to Gmail best-effort — never block the UI on network mail ops
+  if (account) {
+    const ids = rows.map((r) => r.messageId);
+    const boxes = [...new Set(rows.map((r) => r.folder))].filter((f): f is SyncFolder =>
+      ["inbox", "sent", "drafts", "trash", "spam"].includes(f)
+    );
+    void (async () => {
+      for (const box of boxes) {
+        try {
+          if (purge) await purgeRemote(account, ids, box);
+          else await moveToTrashRemote(account, ids, box);
+        } catch { /* best effort */ }
+      }
+    })().catch(() => undefined);
+  }
+
+  if (purge) {
+    await db
+      .delete(emails)
+      .where(and(eq(emails.userId, userId), eq(emails.accountId, accountId), eq(emails.threadKey, threadKey)));
+    return NextResponse.json({ mode: "purge", count: rows.length });
+  }
+
+  await db
+    .update(emails)
+    .set({ folder: "trash", isRead: true })
+    .where(and(eq(emails.userId, userId), eq(emails.accountId, accountId), eq(emails.threadKey, threadKey)));
+  return NextResponse.json({ mode: "trash", count: rows.length });
 }

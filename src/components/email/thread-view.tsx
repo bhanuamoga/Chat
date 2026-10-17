@@ -157,7 +157,12 @@ export function ThreadView({
         )}
       </div>
 
-      {/* reply composer — Gmail style pinned at bottom */}
+      {/* reply composer — Gmail style pinned at bottom (hidden in Trash) */}
+      {thread.folder === "trash" ? (
+        <div className="border-t border-border bg-muted/40 px-4 py-3 text-center text-xs text-muted-foreground">
+          This conversation is in Trash — nothing can be replied here.
+        </div>
+      ) : (
       <div className="border-t border-border p-3">
         <div className="rounded-2xl border border-border bg-card shadow-sm focus-within:border-primary/50">
           <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2 text-xs text-muted-foreground">
@@ -184,6 +189,7 @@ export function ThreadView({
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
