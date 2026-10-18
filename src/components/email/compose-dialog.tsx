@@ -136,15 +136,15 @@ export function ComposeDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-2xl data-[state=open]:duration-300
-          max-sm:left-0 max-sm:top-auto max-sm:bottom-0 max-sm:translate-x-0 max-sm:translate-y-0
-          max-sm:max-w-none max-sm:rounded-b-none max-sm:rounded-t-2xl max-sm:border-x-0 max-sm:border-b-0
-          max-sm:p-3 max-sm:pb-[max(0.75rem,env(safe-area-inset-bottom))] max-sm:data-[state=closed]:slide-out-to-bottom max-sm:data-[state=open]:slide-in-from-bottom"
+        className="flex max-w-2xl flex-col gap-3 data-[state=open]:duration-300
+          max-sm:inset-0 max-sm:h-dvh max-sm:w-screen max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0
+          max-sm:rounded-none max-sm:border-0 max-sm:p-0 max-sm:shadow-none"
       >
-        <DialogHeader>
+        {/* mobile = full screen view, not a popup */}
+        <DialogHeader className="max-sm:border-b max-sm:border-border max-sm:px-3 max-sm:py-2.5">
           <DialogTitle className="text-base">New email</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto max-sm:px-3 max-sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="grid grid-cols-[64px_1fr] items-center gap-2">
             <span className="text-xs text-muted-foreground">To</span>
             <Input value={to} onChange={(e) => setTo(e.target.value)} placeholder="name@gmail.com, other@example.com" autoFocus className="h-10 sm:h-9" />
@@ -159,7 +159,7 @@ export function ComposeDialog({
             value={body}
             onChange={(e) => setBody(e.target.value)}
             placeholder="Write your message…"
-            className="min-h-[28vh] resize-y text-sm sm:min-h-[220px]"
+            className="min-h-[220px] flex-1 resize-none text-sm max-sm:min-h-0"
           />
 
           {/* attachments row like Gmail's bottom toolbar */}
@@ -188,7 +188,7 @@ export function ComposeDialog({
           )}
 
           {/* bottom action row — visible on every screen size */}
-          <div className="flex items-center gap-2 border-t border-border/60 pt-3">
+          <div className="mt-auto flex items-center gap-2 border-t border-border/60 bg-background pt-3 sm:mt-0 sm:bg-transparent">
             <Button
               variant="ghost"
               size="icon"

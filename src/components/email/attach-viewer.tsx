@@ -123,7 +123,11 @@ export function AttachmentViewer({ target, onClose }: { target: AttachmentTarget
 
   return (
     <Dialog open onOpenChange={(o) => (!o ? onClose() : undefined)}>
-      <DialogContent className="flex h-[85vh] max-w-4xl flex-col gap-2 p-0">
+      <DialogContent
+        className="flex h-[85vh] max-w-4xl flex-col gap-2 p-0
+          max-sm:inset-0 max-sm:h-dvh max-sm:w-screen max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0
+          max-sm:rounded-none max-sm:border-0 max-sm:shadow-none"
+      >
         <DialogHeader className="flex-row items-center gap-3 space-y-0 border-b border-border px-4 py-3">
           <DialogTitle className="min-w-0 flex-1 truncate text-sm font-semibold">{target.filename}</DialogTitle>
           {kb != null && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{kb} KB</span>}
