@@ -49,7 +49,7 @@ function EmailBody({ html, fallback }: { html: string | null; fallback: string }
       title="Email content"
       sandbox="allow-same-origin"
       srcDoc={doc}
-      className="mt-3 w-full rounded-lg border border-border/50 bg-white"
+      className="mt-2 w-full bg-white sm:mt-3 sm:rounded-lg sm:border sm:border-border/50"
       style={{ height: 160 }}
       scrolling="no"
       onLoad={(e) => {
@@ -94,41 +94,48 @@ function MessageCard({
   me,
   last,
   accountId,
+  order,
   onOpenAttachment,
 }: {
   m: EmailMessage;
   me: string;
   last: boolean;
   accountId: string;
+  order: number;
   onOpenAttachment: (t: AttachmentTarget) => void;
 }) {
   const mine = m.fromAddress.toLowerCase() === me.toLowerCase();
   return (
     <article
       className={cn(
-        "overflow-hidden rounded-xl border border-border/70 bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
-        mine && "border-primary/30"
+        "mail-card-in overflow-hidden border-b border-border/60 bg-card",
+        "sm:rounded-xl sm:border sm:shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
+        mine && "sm:border-primary/30"
       )}
+      style={{ animationDelay: `${Math.min(order * 45, 360)}ms` }}
     >
-      <div className="p-3 sm:p-5">
+      <div className="px-3.5 py-3.5 sm:p-5">
+      {/* header — 3 clean rows: name+date · address · recipients */}
       <header className="flex items-start gap-2.5 sm:gap-3">
         <span
-          className="flex size-10 shrink-0 select-none items-center justify-center rounded-full text-sm font-bold text-white shadow-sm"
+          className="flex size-9 shrink-0 select-none items-center justify-center rounded-full text-sm font-bold text-white shadow-sm sm:size-10"
           style={{ background: colorFor(m.fromAddress || m.fromName) }}
           aria-hidden
         >
           {initials(m)}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <span className="text-sm font-semibold text-foreground">{mine ? "Me" : m.fromName || m.fromAddress}</span>
-            {m.isStarred && <Star className="size-3.5 fill-amber-400 text-amber-400" />}
-            <span className="text-xs text-muted-foreground">&lt;{m.fromAddress}&gt;</span>
-            <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+          <div className="flex items-baseline gap-1.5">
+            <span className="truncate text-[15px] font-semibold leading-tight text-foreground sm:text-sm">
+              {mine ? "Me" : m.fromName || m.fromAddress}
+            </span>
+            {m.isStarred && <Star className="size-3.5 shrink-0 fill-amber-400 text-amber-400" />}
+            <span className="ml-auto shrink-0 tabular-nums text-[11px] text-muted-foreground">
               {new Date(m.date).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
             </span>
           </div>
-          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">&lt;{m.fromAddress}&gt;</div>
+          <div className="mt-0.5 truncate text-[11px] text-muted-foreground/80">
             to {m.toAddresses.map((a) => a.name || a.address).join(", ") || "—"}
             {m.ccAddresses.length > 0 && <> · cc {m.ccAddresses.map((a) => a.name || a.address).join(", ")}</>}
           </div>
@@ -245,7 +252,7 @@ export function ThreadView({
   }, [reply, cc, bcc, messages, sending, account.id, load, onRefreshed]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="mail-slide-in flex min-h-0 flex-1 flex-col">
       {/* subject header — own bar so the right pane owns its full height */}
       <div className="flex items-center gap-1.5 border-b border-border bg-card/60 px-2.5 py-2.5 sm:gap-2 sm:px-5 sm:py-3">
         <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight text-foreground sm:text-lg">{subject || "(no subject)"}</h2>
@@ -276,7 +283,7 @@ export function ThreadView({
       </div>
 
       {/* messages */}
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-1.5 sm:space-y-4 sm:px-4 sm:py-4">
+      <div ref={scrollRef} className="flex-1 space-y-0 overflow-y-auto p-0 sm:space-y-4 sm:px-4 sm:py-4">
         {messages === null ? (
           <div className="mx-auto w-full max-w-5xl space-y-4">
             <Skeleton className="h-36 w-full rounded-2xl" />
@@ -293,6 +300,7 @@ export function ThreadView({
                 me={account.emailAddress}
                 last={i === messages.length - 1}
                 accountId={account.id}
+                order={i}
                 onOpenAttachment={setViewer}
               />
             ))}
@@ -306,8 +314,8 @@ export function ThreadView({
           This conversation is in Trash — nothing can be replied here.
         </div>
       ) : (
-        <div className="border-t border-border bg-background/60 px-1.5 py-2.5 sm:px-4 sm:py-3">
-          <div className="mx-auto w-full max-w-5xl rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow focus-within:border-primary/50 focus-within:shadow-md focus-within:ring-1 focus-within:ring-primary/20">
+        <div className="border-t border-border bg-background/60 px-0 py-2 sm:px-4 sm:py-3">
+          <div className="mx-auto w-full max-w-5xl bg-card p-3.5 shadow-sm transition-shadow sm:rounded-2xl sm:border sm:border-border sm:p-4 focus-within:border-primary/50 focus-within:shadow-md focus-within:ring-1 focus-within:ring-primary/20">
             {/* row 1 — who we're replying to */}
             <div className="flex items-center gap-2 text-sm">
               <Reply className="size-4 text-primary" />
@@ -353,7 +361,7 @@ export function ThreadView({
               <Button
                 onClick={sendReply}
                 disabled={!reply.trim() || sending || !messages}
-                className="ml-auto h-9 gap-2 rounded-md px-4 text-sm font-medium shadow-sm"
+                className="ml-auto h-9 gap-2 rounded-md px-4 text-sm font-medium shadow-sm transition-transform active:scale-95"
               >
                 {sending ? "Sending…" : "Send"}
                 {!sending && <Send className="size-4" />}

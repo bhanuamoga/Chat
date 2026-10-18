@@ -613,7 +613,7 @@ export function EmailClient() {
                     : `Nothing in ${FOLDERS.find((x) => x.id === folder)?.label ?? folder}.`}
               </div>
             ) : (
-              threads.map((t) => {
+              threads.map((t, tIdx) => {
                 const names = t.participants.map((p) => p.name || p.address).join(", ");
                 const star = t.isStarred;
                 return (
@@ -624,9 +624,10 @@ export function EmailClient() {
                     onClick={() => openThread(t)}
                     onKeyDown={(e) => e.key === "Enter" && openThread(t)}
                     className={cn(
-                      "flex w-full cursor-pointer gap-3 border-b border-border/60 px-3 py-2.5 text-left transition-colors hover:bg-accent/50",
+                      "mail-card-in flex w-full cursor-pointer gap-3 border-b border-border/60 px-3 py-2.5 text-left transition-colors hover:bg-accent/50",
                       t.unread && "bg-primary/[0.04]"
                     )}
+                    style={{ animationDelay: `${Math.min(tIdx * 25, 500)}ms` }}
                   >
                     <span
                       className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"

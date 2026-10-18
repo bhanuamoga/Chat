@@ -398,3 +398,24 @@
 .markdown-body ol { list-style-type: decimal; }
 .markdown-body > :first-child { margin-top: 0; }
 .markdown-body > :last-child { margin-bottom: 0; }
+
+/* ------------------------------------------------------------------
+ * Email — entrance micro-motion (thread + message stagger)
+ * ---------------------------------------------------------------- */
+@keyframes mail-card-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.mail-card-in {
+  animation: mail-card-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes mail-slide-in {
+  from { opacity: 0.3; transform: translateX(26px); }
+  to { opacity: 1; transform: none; }
+}
+.mail-slide-in {
+  animation: mail-slide-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mail-card-in, .mail-slide-in { animation: none; }
+}
