@@ -193,6 +193,7 @@ export function ThreadView({
   const [bcc, setBcc] = useState("");
   const [showCcBcc, setShowCcBcc] = useState(false);
   const [sending, setSending] = useState(false);
+  const [replyOpen, setReplyOpen] = useState(false);
   const [viewer, setViewer] = useState<AttachmentTarget | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -244,6 +245,7 @@ export function ThreadView({
       toast.success("Reply sent");
       setCc("");
       setBcc("");
+      setReplyOpen(false);
       await load();
       onRefreshed();
     } finally {
@@ -306,16 +308,26 @@ export function ThreadView({
             ))}
           </div>
         )}
-      </div>
 
-      {/* reply composer — pinned at bottom (hidden in Trash) */}
-      {thread.folder === "trash" ? (
-        <div className="border-t border-border bg-muted/40 px-4 py-3 text-center text-xs text-muted-foreground">
-          This conversation is in Trash — nothing can be replied here.
-        </div>
-      ) : (
-        <div className="border-t border-border bg-background/60 px-0 py-2 sm:px-4 sm:py-3">
-          <div className="mx-auto w-full max-w-5xl bg-card p-3.5 shadow-sm transition-shadow sm:rounded-2xl sm:border sm:border-border sm:p-4 focus-within:border-primary/50 focus-within:shadow-md focus-within:ring-1 focus-within:ring-primary/20">
+        {/* reply — NOT sticky: lives in the flow at the end of the conversation.
+            A Gmail-style Reply button reveals the composer (web + mobile alike). */}
+        {messages !== null && messages.length > 0 && thread.folder !== "trash" && !replyOpen && (
+          <div className="mx-auto w-full max-w-5xl px-3 pb-6 pt-3 sm:px-4">
+            <Button
+              variant="outline"
+              className="mail-card-in gap-2 rounded-full border-border bg-card px-5 shadow-sm"
+              onClick={() => {
+                setReplyOpen(true);
+                requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }));
+              }}
+            >
+              <Reply className="size-4" /> Reply
+            </Button>
+          </div>
+        )}
+        {messages !== null && messages.length > 0 && thread.folder !== "trash" && replyOpen && (
+        <div className="px-0 py-2 sm:px-4 sm:py-3">
+          <div className="mail-card-in mx-auto w-full max-w-5xl border border-border/70 bg-card p-3.5 shadow-sm transition-shadow sm:rounded-2xl sm:p-4 focus-within:border-primary/50 focus-within:shadow-md focus-within:ring-1 focus-within:ring-primary/20">
             {/* row 1 — who we're replying to */}
             <div className="flex items-center gap-2 text-sm">
               <Reply className="size-4 text-primary" />
@@ -348,6 +360,7 @@ export function ThreadView({
                 }
               }}
               placeholder="Type your reply…"
+              autoFocus
               className="mt-2 w-full text-sm placeholder:text-muted-foreground/60"
             />
             {/* row 3 — hint + send */}
@@ -367,9 +380,24 @@ export function ThreadView({
                 {!sending && <Send className="size-4" />}
               </Button>
             </div>
+            <div className="mt-2 flex justify-start">
+              <button
+                type="button"
+                onClick={() => setReplyOpen(false)}
+                className="text-xs font-medium text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+              >
+                collapse reply
+              </button>
+            </div>
           </div>
         </div>
-      )}
+        )}
+        {thread.folder === "trash" && (
+          <div className="border-t border-border bg-muted/40 px-4 py-3 text-center text-xs text-muted-foreground">
+            This conversation is in Trash — nothing can be replied here.
+          </div>
+        )}
+      </div>
       {viewer && <AttachmentViewer target={viewer} onClose={() => setViewer(null)} />}
     </div>
   );
