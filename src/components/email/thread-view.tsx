@@ -34,12 +34,13 @@ function EmailBody({ html, fallback }: { html: string | null; fallback: string }
 <style>
   html, body { margin: 0; padding: 0; }
   body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-         font-size: 14px; line-height: 1.55; color: #18181b; padding: 14px; word-break: break-word; }
+         font-size: 14px; line-height: 1.55; color: #18181b; padding: 0; word-break: break-word; }
+  #mkw { padding: 14px; }
   img { max-width: 100% !important; height: auto !important; }
   a { color: #2563eb; }
   blockquote { border-left: 3px solid #e4e4e7; margin-left: 0; padding-left: 12px; color: #52525b; }
-  pre { white-space: pre-wrap; }
-</style></head><body>${inner}</body></html>`;
+  pre { white-space: pre-wrap; overflow-x: auto; }
+</style></head><body><div id="mkw">${inner}</div></body></html>`;
   }, [html, fallback]);
 
   return (
@@ -53,11 +54,35 @@ function EmailBody({ html, fallback }: { html: string | null; fallback: string }
       scrolling="no"
       onLoad={(e) => {
         const el = e.currentTarget;
-        requestAnimationFrame(() => {
+        const fit = () => {
           try {
-            const h = el.contentWindow?.document.documentElement?.scrollHeight ?? 0;
-            if (h > 0) el.style.height = `${Math.min(h + 4, 6000)}px`;
+            const w = el.contentWindow;
+            const wrap = w?.document.getElementById("mkw");
+            if (!w || !wrap) return;
+            /* natural size first */
+            wrap.style.transform = "";
+            wrap.style.width = "";
+            const cw = el.clientWidth || w.innerWidth;
+            const sw = wrap.scrollWidth + 28; /* padding x2 */
+            if (cw > 0 && sw > cw) {
+              /* newsletter is wider than the phone: fit-to-width like Gmail mobile */
+              const z = Math.max(cw / sw, 0.42);
+              wrap.style.transform = `scale(${z})`;
+              wrap.style.transformOrigin = "0 0";
+              wrap.style.width = `${(100 / z).toFixed(2)}%`;
+              wrap.style.boxSizing = "border-box";
+            }
+            const h = wrap.getBoundingClientRect().height;
+            if (h > 0) el.style.height = `${Math.min(Math.ceil(h) + 6, 6000)}px`;
           } catch { /* keep default height */ }
+        };
+        requestAnimationFrame(() => {
+          fit();
+          /* re-fit when the phone flips / shell resizes */
+          try {
+            const ro = new ResizeObserver(() => fit());
+            ro.observe(el);
+          } catch { /* ResizeObserver unsupported — one-shot fit stays */ }
         });
       }}
     />
@@ -85,8 +110,8 @@ function MessageCard({
         mine && "border-primary/30"
       )}
     >
-      <div className="p-4 sm:p-5">
-      <header className="flex items-start gap-3">
+      <div className="p-3 sm:p-5">
+      <header className="flex items-start gap-2.5 sm:gap-3">
         <span
           className="flex size-10 shrink-0 select-none items-center justify-center rounded-full text-sm font-bold text-white shadow-sm"
           style={{ background: colorFor(m.fromAddress || m.fromName) }}
@@ -222,10 +247,11 @@ export function ThreadView({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* subject header — own bar so the right pane owns its full height */}
-      <div className="flex items-center gap-2 border-b border-border bg-card/60 px-3 py-3 sm:px-5">
-        <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">{subject || "(no subject)"}</h2>
+      <div className="flex items-center gap-1.5 border-b border-border bg-card/60 px-2.5 py-2.5 sm:gap-2 sm:px-5 sm:py-3">
+        <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight text-foreground sm:text-lg">{subject || "(no subject)"}</h2>
+        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium capitalize text-muted-foreground sm:text-xs">{thread.folder}</span>
         {thread.count > 1 && (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">{thread.count}</span>
+          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold tabular-nums text-muted-foreground sm:text-xs">{thread.count}</span>
         )}
         <div className="ml-auto flex items-center gap-1">
           {onTrash && (
@@ -250,7 +276,7 @@ export function ThreadView({
       </div>
 
       {/* messages */}
-      <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:px-4">
+      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-1.5 sm:space-y-4 sm:px-4 sm:py-4">
         {messages === null ? (
           <div className="mx-auto w-full max-w-5xl space-y-4">
             <Skeleton className="h-36 w-full rounded-2xl" />
@@ -280,7 +306,7 @@ export function ThreadView({
           This conversation is in Trash — nothing can be replied here.
         </div>
       ) : (
-        <div className="border-t border-border bg-background/60 px-3 py-3 sm:px-4">
+        <div className="border-t border-border bg-background/60 px-1.5 py-2.5 sm:px-4 sm:py-3">
           <div className="mx-auto w-full max-w-5xl rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow focus-within:border-primary/50 focus-within:shadow-md focus-within:ring-1 focus-within:ring-primary/20">
             {/* row 1 — who we're replying to */}
             <div className="flex items-center gap-2 text-sm">
