@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Paperclip, Reply, Send, Star, Trash2, X } from "lucide-react";
+import { Paperclip, Reply, Send, Star, Trash2, X, ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,7 +35,8 @@ function EmailBody({ html, fallback }: { html: string | null; fallback: string }
   html, body { margin: 0; padding: 0; }
   body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
          font-size: 14px; line-height: 1.55; color: #18181b; padding: 0; word-break: break-word; }
-  #mkw { padding: 14px; }
+  #mkw { padding: 10px 12px; }
+  @media (max-width: 560px) { #mkw { padding: 2px 1px; } }
   img { max-width: 100% !important; height: auto !important; }
   a { color: #2563eb; }
   blockquote { border-left: 3px solid #e4e4e7; margin-left: 0; padding-left: 12px; color: #52525b; }
@@ -180,12 +181,14 @@ export function ThreadView({
   onRefreshed,
   onTrash,
   onBack,
+  onForward,
 }: {
   thread: EmailThreadRow;
   account: EmailAccountClient;
   onRefreshed: () => void;
   onTrash?: () => void;
   onBack?: () => void;
+  onForward?: (fwd: { subject: string; text: string }) => void;
 }) {
   const [messages, setMessages] = useState<EmailMessage[] | null>(null);
   const [reply, setReply] = useState("");
@@ -313,6 +316,7 @@ export function ThreadView({
             A Gmail-style Reply button reveals the composer (web + mobile alike). */}
         {messages !== null && messages.length > 0 && thread.folder !== "trash" && !replyOpen && (
           <div className="mx-auto w-full max-w-5xl px-3 pb-6 pt-3 sm:px-4">
+            <div className="flex gap-2">
             <Button
               variant="outline"
               className="mail-card-in gap-2 rounded-full border-border bg-card px-5 shadow-sm"
@@ -323,6 +327,25 @@ export function ThreadView({
             >
               <Reply className="size-4" /> Reply
             </Button>
+            <Button
+              variant="outline"
+              className="mail-card-in gap-2 rounded-full border-border bg-card px-5 shadow-sm"
+              style={{ animationDelay: "60ms" }}
+              onClick={() => {
+                const last = messages[messages.length - 1];
+                const quoted =
+                  `---------- Forwarded message ---------\nFrom: ${last.fromName ? `${last.fromName} ` : ""}<${last.fromAddress}>\n` +
+                  `Date: ${new Date(last.date).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}\n` +
+                  `Subject: ${last.subject || "(no subject)"}\n\n${(last.bodyText || "").trim()}\n`;
+                onForward?.({
+                  subject: /^fwd:/i.test(last.subject || "") ? last.subject : `Fwd: ${last.subject || "(no subject)"}`,
+                  text: quoted,
+                });
+              }}
+            >
+              <ArrowUp className="size-4 -rotate-45" /> Forward
+            </Button>
+            </div>
           </div>
         )}
         {messages !== null && messages.length > 0 && thread.folder !== "trash" && replyOpen && (

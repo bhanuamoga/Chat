@@ -500,6 +500,10 @@ export function EmailClient() {
             onRefreshed={() => loadThreads(true)}
             onTrash={() => deleteThread(selected)}
             onBack={() => setSelected(null)}
+            onForward={(fwd) => {
+              setDraftSeed({ threadKey: "", to: "", cc: "", subject: fwd.subject, text: fwd.text });
+              setComposeOpen(true);
+            }}
           />
         ) : (
           <>

@@ -471,6 +471,13 @@ export interface SendParams {
   html?: string;
   inReplyTo?: string;
   references?: string;
+  attachments?: OutAttachment[];
+}
+
+export interface OutAttachment {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
 }
 
 export async function sendMail(
@@ -496,6 +503,7 @@ export async function sendMail(
     html: p.html ?? `<div style="white-space:pre-wrap;font-family:inherit">${escapeHtml(p.text)}</div>`,
     inReplyTo: p.inReplyTo,
     references: p.references,
+    attachments: p.attachments?.length ? p.attachments : undefined,
   });
   return { messageId: normId(String(info.messageId || "")) || `local-${Date.now()}-sent` };
 }

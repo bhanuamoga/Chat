@@ -11,7 +11,7 @@ import { db } from "@/db";
 import { emailAccounts, emails } from "@/db/schema";
 import { auth } from "@/auth";
 import { ensureEmailSchema } from "@/lib/email/ddl";
-import { sendMail, snippetOf, escapeHtml } from "@/lib/email/mail";
+import { sendMail, snippetOf, escapeHtml, type OutAttachment } from "@/lib/email/mail";
 import type { EmailAddress } from "@/lib/email/types";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +41,10 @@ export async function POST(req: NextRequest) {
   const bcc = String(body.bcc || "").trim();
   let subject = String(body.subject || "").trim();
   const text = String(body.text || "");
+  interface RefAttachment { url: string; name?: string; mime?: string }
+  const refAttachments: RefAttachment[] = Array.isArray(body.attachments)
+    ? (body.attachments as RefAttachment[]).filter((x) => x && typeof x.url === "string").slice(0, 10)
+    : [];
 
   if (!accountId || !text) return NextResponse.json({ error: "accountId + text required" }, { status: 400 });
 
@@ -75,7 +79,22 @@ export async function POST(req: NextRequest) {
   if (!to) return NextResponse.json({ error: "Recipient (to) is required" }, { status: 400 });
 
   try {
-    const { messageId } = await sendMail(account, { to, cc, bcc, subject, text, inReplyTo, references });
+    /* pull the uploaded bytes back off storage so nodemailer can attach them */
+    const attachments: OutAttachment[] = [];
+    const attachmentMeta: { filename: string; size?: number; mime?: string }[] = [];
+    for (const ref of refAttachments) {
+      try {
+        const url = ref.url.startsWith("http") ? ref.url : req.nextUrl.origin + ref.url;
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (!buf.length || buf.length > 20 * 1024 * 1024) continue;
+        attachments.push({ filename: ref.name || "file", content: buf, contentType: ref.mime || "application/octet-stream" });
+        attachmentMeta.push({ filename: ref.name || "file", size: buf.length, mime: ref.mime || "application/octet-stream" });
+      } catch { /* best effort per file */ }
+    }
+
+    const { messageId } = await sendMail(account, { to, cc, bcc, subject, text, inReplyTo, references, attachments });
 
     const localRow = {
       userId,
@@ -95,13 +114,15 @@ export async function POST(req: NextRequest) {
       date: new Date(),
       folder: "sent",
       isRead: true,
+      hasAttachments: attachmentMeta.length > 0,
+      attachments: attachmentMeta,
     };
     await db
       .insert(emails)
       .values(localRow)
       .onConflictDoUpdate({
         target: [emails.accountId, emails.messageId],
-        set: { bodyText: text, snippet: snippetOf(text) },
+        set: { bodyText: text, snippet: snippetOf(text), hasAttachments: attachmentMeta.length > 0, attachments: attachmentMeta },
       });
 
     return NextResponse.json({ ok: true, messageId, threadKey: localRow.threadKey });
