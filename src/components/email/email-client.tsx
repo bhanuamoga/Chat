@@ -37,7 +37,7 @@ import { cn } from "@/lib/utils";
 import { MobileMenuDrawer } from "@/components/nav-rail";
 import type { EmailAccountClient, EmailFolderId, EmailThreadRow } from "@/lib/email/types";
 import { ThreadView } from "./thread-view";
-import { ComposeDialog } from "./compose-dialog";
+import { ComposeView } from "./compose-view";
 import { AccountsDialog } from "./accounts-dialog";
 
 /* ------------------------------------------------------- helpers */
@@ -699,25 +699,26 @@ export function EmailClient() {
         <PenSquare className="size-6" />
       </button>
 
-      <ComposeDialog
-        open={composeOpen}
-        onOpenChange={(v) => {
-          setComposeOpen(v);
-          if (!v) setDraftSeed(null);
-        }}
-        accountId={activeAccount?.id ?? null}
-        initial={draftSeed}
-        onSent={() => {
-          if (draftSeed) {
-            fetch("/api/email/messages", {
-              method: "DELETE",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ accountId: activeAccount?.id, threadKey: draftSeed.threadKey, folder: "drafts", mode: "purge" }),
-            }).catch(() => undefined);
-          }
-          if (folderRef.current === "sent" || folderRef.current === "drafts") loadThreads(true);
-        }}
-      />
+      {composeOpen && (
+        <ComposeView
+          accountId={activeAccount?.id ?? null}
+          initial={draftSeed}
+          onClose={() => {
+            setComposeOpen(false);
+            setDraftSeed(null);
+          }}
+          onSent={() => {
+            if (draftSeed?.threadKey) {
+              fetch("/api/email/messages", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accountId: activeAccount?.id, threadKey: draftSeed.threadKey, folder: "drafts", mode: "purge" }),
+              }).catch(() => undefined);
+            }
+            if (folderRef.current === "sent" || folderRef.current === "drafts") loadThreads(true);
+          }}
+        />
+      )}
       <AccountsDialog
         open={accountsOpen}
         onOpenChange={setAccountsOpen}
