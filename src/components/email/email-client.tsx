@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
+  ArrowLeft,
   ChevronLeft,
   ChevronRight,
   Inbox as InboxIcon,
@@ -19,7 +20,6 @@ import {
   Settings,
   Star,
   Paperclip,
-  ArrowLeft,
   Mail,
   Circle,
   FileText,
@@ -28,13 +28,13 @@ import {
   Loader2,
   Search,
   X,
-  PanelLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { MobileMenuDrawer } from "@/components/nav-rail";
 import type { EmailAccountClient, EmailFolderId, EmailThreadRow } from "@/lib/email/types";
 import { ThreadView } from "./thread-view";
 import { ComposeDialog } from "./compose-dialog";
@@ -91,7 +91,7 @@ export function EmailClient() {
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
-  const [navOpen, setNavOpen] = useState(false); // mobile folder overlay
+  const [phoneList, setPhoneList] = useState(false); // mobile: folders screen → list screen
   const [draftSeed, setDraftSeed] = useState<{ threadKey: string; to: string; cc: string; subject: string; text: string } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const folderRef = useRef(folder);
@@ -172,7 +172,7 @@ export function EmailClient() {
     setFolder(f);
     setPage(1);
     setSelected(null);
-    setNavOpen(false);
+    setPhoneList(true); // mobile: folder tap opens the list as its own screen
   }, []);
   const switchTab = useCallback((t: "all" | "unread" | "read") => {
     setTab(t);
@@ -387,10 +387,11 @@ export function EmailClient() {
   );
 
   /* ---------------------------------------- layout ---------------------------------------- */
-  return (
-    <div className="flex h-full min-h-0 flex-1">
-      {/* ══ LEFT — account · sync/settings · search · New email · folders ══ */}
-      <aside className="hidden w-72 shrink-0 flex-col border-r border-border md:flex">
+  /* Left panel content — ONE definition, used by the desktop aside AND the
+     mobile folders screen (chat-page style stacked panes). */
+  const panelContent = (
+    <>
+
         {/* account row — sync + settings sit next to the email */}
         <div className="mx-2 mb-2 mt-2 flex items-center gap-1 rounded-xl border border-border bg-card px-2 py-2">
           <button
@@ -472,26 +473,25 @@ export function EmailClient() {
 
         {/* folders with totals */}
         <div className="flex-1 overflow-y-auto border-t border-border/60 pt-2">{folderNav()}</div>
-      </aside>
+    </>
+  );
 
-      {/* mobile folder overlay */}
-      {navOpen && (
-        <div className="fixed inset-0 z-50 md:hidden" onClick={() => setNavOpen(false)}>
-          <div className="absolute inset-0 bg-black/30" />
-          <div className="absolute inset-y-0 left-0 w-64 border-r border-border bg-background shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-3 py-2.5">
-              <span className="text-sm font-semibold">Folders</span>
-              <Button variant="ghost" size="icon" onClick={() => setNavOpen(false)} aria-label="Close">
-                <X className="size-4" />
-              </Button>
-            </div>
-            {folderNav(true)}
-          </div>
+  return (
+    <div className="flex h-full min-h-0 flex-1">
+      {/* ══ LEFT — desktop: always visible aside ══ */}
+      <aside className="hidden w-72 shrink-0 flex-col border-r border-border md:flex">{panelContent}</aside>
+
+      {/* ══ MOBILE screen 1 — folders (like the chat list pane) ══ */}
+      <div className={cn("flex min-h-0 w-full flex-1 flex-col md:hidden", phoneList && "hidden")}>
+        <div className="flex items-center gap-1 border-b border-border px-2 py-2">
+          <MobileMenuDrawer />
+          <span className="text-base font-semibold tracking-tight">Mail</span>
         </div>
-      )}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">{panelContent}</div>
+      </div>
 
-      {/* ══ RIGHT — header rows + list OR open conversation ══ */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* ══ RIGHT / MOBILE screen 2 — header rows + list OR open conversation ══ */}
+      <div className={cn("min-w-0 flex-1 flex-col", phoneList ? "flex" : "hidden", "md:flex")}>
         {selected ? (
           <ThreadView
             key={selected.threadKey + selected.folder}
@@ -505,8 +505,8 @@ export function EmailClient() {
           <>
           {/* header row — MOBILE only (desktop lives in the left panel) */}
           <div className="flex items-center gap-2 border-b border-border px-2 py-2 md:hidden">
-            <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setNavOpen(true)} aria-label="Folders">
-              <PanelLeft className="size-4" />
+            <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setPhoneList(false)} aria-label="Back to folders">
+              <ArrowLeft className="size-5" />
             </Button>
             <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 focus-within:border-primary/50">
               <Search className="size-4 shrink-0 text-muted-foreground" />
