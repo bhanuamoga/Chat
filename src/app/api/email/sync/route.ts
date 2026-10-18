@@ -73,61 +73,65 @@ export async function POST(req: NextRequest) {
                   flagsFixed += ups.length;
                 },
                 onRows: async (rows) => {
-                  for (const r of rows) {
-                    const meta = {
-                      ...r,
-                      attachments: r.attachments.map((a) => ({
-                        filename: a.filename,
-                        size: a.size,
-                        mime: a.mime,
-                        path: null as string | null,
-                      })),
-                    };
-                    const [ins] = await db
-                      .insert(emails)
-                      .values({ userId, accountId: account.id, ...meta })
-                      .onConflictDoUpdate({
-                        target: [emails.accountId, emails.messageId],
-                        set: {
-                          subject: r.subject,
-                          snippet: r.snippet,
-                          bodyText: r.bodyText,
-                          bodyHtml: r.bodyHtml,
-                          toAddresses: r.toAddresses,
-                          ccAddresses: r.ccAddresses,
-                          isRead: r.isRead,
-                          isStarred: r.isStarred,
-                          hasAttachments: r.hasAttachments,
-                          attachments: meta.attachments,
-                          threadKey: r.threadKey,
-                          inReplyTo: r.inReplyTo,
-                          refIds: r.refIds,
-                          folder: r.folder,
-                        },
-                      })
-                      .returning({ id: emails.id });
-                    upserted += 1;
+                  /* rows land in small flushes from parallel folders — write them
+                     AND their attachments concurrently (big sync speedup) */
+                  await Promise.all(
+                    rows.map(async (r) => {
+                      const meta = {
+                        ...r,
+                        attachments: r.attachments.map((a) => ({
+                          filename: a.filename,
+                          size: a.size,
+                          mime: a.mime,
+                          path: null as string | null,
+                        })),
+                      };
+                      const [ins] = await db
+                        .insert(emails)
+                        .values({ userId, accountId: account.id, ...meta })
+                        .onConflictDoUpdate({
+                          target: [emails.accountId, emails.messageId],
+                          set: {
+                            subject: r.subject,
+                            snippet: r.snippet,
+                            bodyText: r.bodyText,
+                            bodyHtml: r.bodyHtml,
+                            toAddresses: r.toAddresses,
+                            ccAddresses: r.ccAddresses,
+                            isRead: r.isRead,
+                            isStarred: r.isStarred,
+                            hasAttachments: r.hasAttachments,
+                            attachments: meta.attachments,
+                            threadKey: r.threadKey,
+                            inReplyTo: r.inReplyTo,
+                            refIds: r.refIds,
+                            folder: r.folder,
+                          },
+                        })
+                        .returning({ id: emails.id });
+                      upserted += 1;
 
-                    /* push attachment bytes to Supabase Storage; patch paths into jsonb */
-                    const rowId = ins?.id;
-                    if (rowId && attachmentsStorageReady() && r.attachments.some((a) => a.content)) {
-                      const nextMeta = meta.attachments.map((a) => ({ ...a }));
-                      let touched = false;
-                      for (let i = 0; i < r.attachments.length; i++) {
-                        const a = r.attachments[i];
-                        if (!a.content) continue;
-                        const path = await storeAttachment(userId, rowId, i, a.filename, a.mime || "application/octet-stream", a.content);
-                        if (path) {
-                          nextMeta[i].path = path;
-                          uploaded += 1;
-                          touched = true;
+                      const rowId = ins?.id;
+                      if (rowId && attachmentsStorageReady() && r.attachments.some((a) => a.content)) {
+                        const nextMeta = meta.attachments.map((a) => ({ ...a }));
+                        const saved = await Promise.all(
+                          r.attachments.map(async (a, i) => {
+                            if (!a.content) return false;
+                            const path = await storeAttachment(userId, rowId, i, a.filename, a.mime || "application/octet-stream", a.content);
+                            if (path) {
+                              nextMeta[i].path = path;
+                              uploaded += 1;
+                              return true;
+                            }
+                            return false;
+                          })
+                        );
+                        if (saved.some(Boolean)) {
+                          await db.update(emails).set({ attachments: nextMeta }).where(eq(emails.id, rowId));
                         }
                       }
-                      if (touched) {
-                        await db.update(emails).set({ attachments: nextMeta }).where(eq(emails.id, rowId));
-                      }
-                    }
-                  }
+                    })
+                  );
                 },
               },
               { timeBudgetMs: TIME_BUDGET_MS }

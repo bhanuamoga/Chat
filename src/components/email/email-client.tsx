@@ -702,6 +702,8 @@ export function EmailClient() {
       {composeOpen && (
         <ComposeView
           accountId={activeAccount?.id ?? null}
+          accountEmail={activeAccount?.emailAddress ?? null}
+          accountName={activeAccount?.name ?? null}
           initial={draftSeed}
           onClose={() => {
             setComposeOpen(false);

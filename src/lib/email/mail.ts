@@ -221,15 +221,104 @@ function resolveBoxes(clientBoxes: Awaited<ReturnType<ImapFlow["list"]>>): Map<S
   return map;
 }
 
+/** Sync ONE mailbox end-to-end over its OWN IMAP connection (enables
+ *  parallel folder syncing — each worker opens an isolated socket). */
+async function syncBox(
+  account: EmailAccount,
+  folder: SyncFolder,
+  path: string,
+  known: Map<string, { isRead: boolean; isStarred: boolean }>,
+  handlers: SyncHandlers,
+  deadline: number,
+): Promise<boolean> {
+  let partial = false;
+  const client = makeClient(account);
+  await client.connect();
+  try {
+    const lock = await client.getMailboxLock(path);
+    try {
+      const mailbox = await client.mailboxOpen(path, { readOnly: true });
+      const total = mailbox.exists || 0;
+      handlers.onProgress?.({ phase: "box", folder, path, fetched: 0, total });
+      if (!total) return false;
+
+      /* pass 1 — headers across the WHOLE mailbox (no cap) */
+      interface Head {
+        uid: number;
+        id: string;
+        seen: boolean;
+        starred: boolean;
+      }
+      const heads: Head[] = [];
+      for await (const h of client.fetch(`1:${total}`, { envelope: true, flags: true })) {
+        const id = normId(String(h.envelope?.messageId || "")) || `local-${h.uid}-${folder}`;
+        heads.push({
+          uid: h.uid,
+          id,
+          seen: h.flags?.has("\Seen") ?? false,
+          starred: h.flags?.has("\Flagged") ?? false,
+        });
+      }
+
+      const fresh = heads.filter((h) => !known.has(h.id)).sort((x, y) => y.uid - x.uid); // newest first
+      const updates: FlagUpdate[] = [];
+      for (const h of heads) {
+        const prev = known.get(h.id);
+        if (prev && (prev.isRead !== h.seen || prev.isStarred !== h.starred)) {
+          updates.push({ messageId: h.id, isRead: h.seen, isStarred: h.starred });
+          prev.isRead = h.seen;
+          prev.isStarred = h.starred;
+        }
+      }
+      if (updates.length) await handlers.onFlags?.(updates);
+
+      /* pass 2 — bodies for the brand new only, newest first, small flushes */
+      if (!fresh.length) {
+        handlers.onProgress?.({ phase: "box", folder, path, fetched: total, total, newsCount: 0 });
+        return false;
+      }
+      handlers.onProgress?.({ phase: "box", folder, path, fetched: 0, total: fresh.length, newsCount: fresh.length });
+      const pending: SyncedEmail[] = [];
+      let received = 0;
+      const uidRanges = fresh.map((f) => f.uid).join(",");
+      for await (const msg of client.fetch(uidRanges, { envelope: true, source: true, flags: true }, { uid: true })) {
+        if (msg.source) {
+          try {
+            const row = await parseRaw(msg.source, folder, msg.flags, msg.uid);
+            pending.push(row);
+            known.set(row.messageId, { isRead: row.isRead, isStarred: row.isStarred });
+          } catch { /* one bad message shouldn't kill the sync */ }
+        }
+        received += 1;
+        if (pending.length >= 8) {
+          await handlers.onRows?.(pending.splice(0));
+          if (Date.now() > deadline) {
+            partial = true;
+            break;
+          }
+        }
+        if (received % 5 === 0 || received === fresh.length) {
+          handlers.onProgress?.({ phase: "box", folder, path, fetched: received, total: fresh.length, newsCount: fresh.length });
+        }
+      }
+      if (pending.length) await handlers.onRows?.(pending.splice(0));
+    } finally {
+      lock.release();
+    }
+  } catch { /* some servers deny listing some boxes; not fatal */ }
+  handlers.onProgress?.({ phase: "box-done", folder, path });
+  return partial;
+}
+
 /**
- * FULL-mailbox incremental sync — NO artificial cap:
- *  1. HEADERS pass per mailbox across the whole range (envelopes + flags, cheap).
- *  2. Known ids → flags only; brand-new ids get body fetches flushed to the
- *     caller in small batches, NEWEST FIRST.
- *  3. timeBudgetMs guards the serverless timeout: when the budget is spent we
- *     return partial=true — the next sync round continues where we stopped
- *     (known ids skip re-downloads, so nothing is wasted).
+ * FULL-mailbox incremental sync — NO artificial cap.
+ * SPEED: every mailbox gets its own IMAP connection and up to
+ * SYNC_FOLDER_CONCURRENCY of them run IN PARALLEL (Gmail allows 15
+ * simultaneous connections; we stay well under). Header passes first,
+ * then body downloads for unknown ids only, streamed in tiny flushes.
  */
+const SYNC_FOLDER_CONCURRENCY = 4;
+
 export async function syncAccount(
   account: EmailAccount,
   known: Map<string, { isRead: boolean; isStarred: boolean }>,
@@ -240,104 +329,42 @@ export async function syncAccount(
   const deadline = Date.now() + Math.max(5_000, options?.timeBudgetMs ?? 95_000);
   let partial = false;
 
-  const client = makeClient(account);
   onProgress?.({ phase: "connect", folder: "inbox" });
-  await client.connect();
+
+  /* one lightweight probe just to resolve mailbox paths */
+  let boxes = new Map<SyncFolder, string>();
+  const probe = makeClient(account);
   try {
-    let boxes = new Map<SyncFolder, string>();
+    await probe.connect();
     try {
-      boxes = resolveBoxes(await client.list());
+      boxes = resolveBoxes(await probe.list());
     } catch {
       boxes.set("inbox", "INBOX");
     }
-
-    for (const [folder, path] of boxes) {
-      if (partial || Date.now() > deadline) {
-        partial = true;
-        break;
-      }
-      onProgress?.({ phase: "box", folder, path });
-      try {
-        const lock = await client.getMailboxLock(path);
-        try {
-          const mailbox = await client.mailboxOpen(path, { readOnly: true });
-          const total = mailbox.exists || 0;
-          onProgress?.({ phase: "box", folder, path, fetched: 0, total });
-          if (!total) {
-            lock.release();
-            continue;
-          }
-
-          /* pass 1 — headers across the WHOLE mailbox (no cap) */
-          interface Head {
-            uid: number;
-            id: string;
-            seen: boolean;
-            starred: boolean;
-          }
-          const heads: Head[] = [];
-          for await (const h of client.fetch(`1:${total}`, { envelope: true, flags: true })) {
-            const id = normId(String(h.envelope?.messageId || "")) || `local-${h.uid}-${folder}`;
-            heads.push({
-              uid: h.uid,
-              id,
-              seen: h.flags?.has("\Seen") ?? false,
-              starred: h.flags?.has("\Flagged") ?? false,
-            });
-          }
-
-          const fresh = heads.filter((h) => !known.has(h.id)).sort((x, y) => y.uid - x.uid); // newest first
-          const updates: FlagUpdate[] = [];
-          for (const h of heads) {
-            const prev = known.get(h.id);
-            if (prev && (prev.isRead !== h.seen || prev.isStarred !== h.starred)) {
-              updates.push({ messageId: h.id, isRead: h.seen, isStarred: h.starred });
-              known.set(h.id, { isRead: h.seen, isStarred: h.starred });
-            }
-          }
-          if (updates.length) await handlers.onFlags?.(updates);
-
-          /* pass 2 — bodies for the brand new only, newest first, small flushes */
-          if (fresh.length) {
-            onProgress?.({ phase: "box", folder, path, fetched: 0, total: fresh.length, newsCount: fresh.length });
-            const pending: SyncedEmail[] = [];
-            let received = 0;
-            const uidRanges = fresh.map((f) => f.uid).join(",");
-            for await (const msg of client.fetch(uidRanges, { envelope: true, source: true, flags: true }, { uid: true })) {
-              if (msg.source) {
-                try {
-                  const row = await parseRaw(msg.source, folder, msg.flags, msg.uid);
-                  pending.push(row);
-                  known.set(row.messageId, { isRead: row.isRead, isStarred: row.isStarred });
-                } catch { /* one bad message shouldn't kill the sync */ }
-              }
-              received += 1;
-              if (pending.length >= 10) {
-                await handlers.onRows?.(pending.splice(0));
-                if (Date.now() > deadline) {
-                  partial = true;
-                  break;
-                }
-              }
-              if (received % 5 === 0 || received === fresh.length) {
-                onProgress?.({ phase: "box", folder, path, fetched: received, total: fresh.length, newsCount: fresh.length });
-              }
-            }
-            if (pending.length) await handlers.onRows?.(pending.splice(0));
-          } else {
-            onProgress?.({ phase: "box", folder, path, fetched: total, total, newsCount: 0 });
-          }
-        } finally {
-          lock.release();
-        }
-      } catch { /* some servers deny listing some boxes; not fatal */ }
-      onProgress?.({ phase: "box-done", folder, path });
-    }
-
-    return { partial };
   } finally {
-    await client.logout().catch(() => undefined);
+    await probe.logout().catch(() => undefined);
   }
+
+  const entries = [...boxes.entries()];
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < entries.length) {
+      const [folder, path] = entries[cursor++ % entries.length];
+      /* CPython-style shared cursor: JS is single-threaded, cursor++ is atomic here */
+      if (Date.now() > deadline) {
+        partial = true;
+        return;
+      }
+      try {
+        if (await syncBox(account, folder, path, known, handlers, deadline)) partial = true;
+      } catch {
+        /* one box failing shouldn't block the rest */
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(SYNC_FOLDER_CONCURRENCY, entries.length) }, () => worker()));
+
+  return { partial };
 }
 
 /** Move messages (by Message-ID header) from a folder into Trash — Gmail MOVE. */
