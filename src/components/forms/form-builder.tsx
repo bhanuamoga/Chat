@@ -211,8 +211,8 @@ export function FormBuilder({ id }: { id: string }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       {/* top bar */}
-      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-background/95 px-3 py-2.5 backdrop-blur sm:px-5">
-        <Button variant="ghost" size="icon" onClick={() => router.push("/forms")} aria-label="Back">
+      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1.5 border-b border-border bg-background/95 px-2.5 py-2 backdrop-blur sm:px-5">
+        <Button variant="ghost" size="icon" className="size-8" onClick={() => router.push("/forms")} aria-label="Back">
           <ArrowLeft className="size-4" />
         </Button>
         <div className="min-w-0 flex-1">
@@ -222,14 +222,14 @@ export function FormBuilder({ id }: { id: string }) {
               setTitle(e.target.value);
               setDirty(true);
             }}
-            className="w-full truncate bg-transparent text-lg font-semibold tracking-tight outline-none"
+            className="w-full truncate bg-transparent text-base font-semibold tracking-tight outline-none sm:text-lg"
             placeholder="Form title"
           />
         </div>
-        {dirty && <Badge variant="secondary">unsaved</Badge>}
-        <Button onClick={() => save()} disabled={saving} className="shrink-0">
-          {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
-          Save & publish
+        {dirty && <Badge variant="secondary" className="max-sm:hidden">unsaved</Badge>}
+        <Button onClick={() => save()} disabled={saving} className="h-8 shrink-0 max-sm:px-2.5">
+          {saving ? <Loader2 className="size-4 animate-spin sm:mr-2" /> : <Save className="size-4 sm:mr-2" />}
+          <span className="max-sm:hidden">Save & publish</span>
         </Button>
       </div>
 
@@ -242,7 +242,7 @@ export function FormBuilder({ id }: { id: string }) {
 
         {/* ============ BUILD ============ */}
         <TabsContent value="build" className="flex-1">
-          <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
+          <div className="grid min-w-0 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
             {/* toolbox */}
             <div className="space-y-2 lg:sticky lg:top-[62px] lg:self-start">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Add field</p>
@@ -269,8 +269,8 @@ export function FormBuilder({ id }: { id: string }) {
                   <CardDescription className="text-xs">Anyone with the link can submit.</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-2 p-3 pt-0">
-                  <div className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1.5">
-                    <code className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">/f/{form.slug}</code>
+                  <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1.5">
+                    <code className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground" title={publicUrl}>/f/{form.slug}</code>
                     <Button variant="ghost" size="icon" className="size-6" onClick={() => copy(publicUrl, "Link")}>
                       <Copy className="size-3" />
                     </Button>
@@ -340,7 +340,7 @@ export function FormBuilder({ id }: { id: string }) {
             </div>
 
             {/* canvas */}
-            <div className="space-y-2.5">
+            <div className="min-w-0 space-y-2.5">
               <div className="grid gap-1.5">
                 <Label className="text-xs text-muted-foreground">Description shown under the title</Label>
                 <Textarea
@@ -362,16 +362,16 @@ export function FormBuilder({ id }: { id: string }) {
               )}
               {fields.map((f, i) => (
                 <Card key={f.id} className="group relative">
-                  <CardContent className="space-y-2 p-4">
-                    <div className="flex items-center gap-1">
-                      <GripVertical className="size-4 text-muted-foreground/50" />
-                      <Badge variant="secondary" className="text-[10px]">
+                  <CardContent className="space-y-2 p-3 sm:p-4">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <GripVertical className="size-4 shrink-0 text-muted-foreground/50 sm:order-none" />
+                      <Badge variant="secondary" className="min-w-0 max-w-full truncate text-[10px]">
                         <span className="mr-1.5 inline-flex items-center gap-1">
-                          <span className="font-black">{i + 1}</span> {toolOf(f.type).label}
+                          <span className="font-black">{i + 1}</span> <span className="truncate">{toolOf(f.type).label}</span>
                         </span>
                       </Badge>
-                      {f.required && <Badge className="text-[10px]">required</Badge>}
-                      <div className="ml-auto flex items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+                      {f.required && <Badge className="shrink-0 text-[10px]">required</Badge>}
+                      <div className="ml-auto flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-hover:opacity-100 max-lg:opacity-100">
                         <Button variant="ghost" size="icon" className="size-7" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up">
                           <ChevronUp className="size-4" />
                         </Button>
