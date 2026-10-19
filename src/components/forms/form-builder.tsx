@@ -1,0 +1,450 @@
+"use client";
+
+/**
+ * /forms/[id] — the visual builder.
+ * Toolbox of shadcn field types on the left; live canvas in the middle (fields
+ * render with the SAME components the public page uses); field settings in an
+ * inline editor; Preview + Submissions tabs; Publish panel with public link +
+ * API token.
+ */
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import {
+  ArrowLeft, Calendar, ChevronDown, ChevronUp, Copy, ExternalLink, GripVertical,
+  Hash, Link2, ListChecks, MailCheck, Phone, Plus, Save, Settings2, ToggleLeft, Trash2, Type,
+  AlignLeft, CheckCircle2, Radio, Loader2, Inbox, RefreshCw,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { useRouter } from "next/navigation";
+import type { FormField, FormFieldType } from "@/lib/forms/types";
+import { newFieldId } from "@/lib/forms/types";
+import { RenderField } from "./render-field";
+
+const TOOLS: { type: FormFieldType; label: string; icon: typeof Type; hint: string }[] = [
+  { type: "text", label: "Short text", icon: Type, hint: "one line answer" },
+  { type: "textarea", label: "Long text", icon: AlignLeft, hint: "multi-line answer" },
+  { type: "email", label: "Email", icon: MailCheck, hint: "valid email input" },
+  { type: "number", label: "Number", icon: Hash, hint: "numeric only" },
+  { type: "phone", label: "Phone", icon: Phone, hint: "telephone keypad" },
+  { type: "url", label: "Link", icon: Link2, hint: "a URL" },
+  { type: "date", label: "Date", icon: Calendar, hint: "date picker" },
+  { type: "checkbox", label: "Checkbox", icon: CheckCircle2, hint: "yes / no" },
+  { type: "select", label: "Dropdown", icon: ListChecks, hint: "pick one option" },
+  { type: "radio", label: "Choice", icon: Radio, hint: "options as radios" },
+];
+
+const toolOf = (t: FormFieldType) => TOOLS.find((x) => x.type === t)!;
+
+interface FormRow {
+  id: string;
+  title: string;
+  description: string;
+  slug: string;
+  active: boolean;
+  fields: FormField[];
+  created_at: string;
+  updated_at: string;
+}
+
+interface SubmissionRow {
+  id: string;
+  data: Record<string, unknown>;
+  created_at: string;
+}
+
+export function FormBuilder({ id }: { id: string }) {
+  const router = useRouter();
+  const [form, setForm] = useState<FormRow | null>(null);
+  const [missing, setMissing] = useState(false);
+  const [fields, setFields] = useState<FormField[]>([]);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<FormField | null>(null);
+  const [optText, setOptText] = useState("");
+  const [preview, setPreview] = useState(false);
+  const [subs, setSubs] = useState<SubmissionRow[] | null>(null);
+
+  const loadForm = useCallback(async () => {
+    const res = await fetch(`/api/forms/${id}`, { cache: "no-store" });
+    if (res.status === 404) return setMissing(true);
+    if (!res.ok) return;
+    const { form: f } = await res.json();
+    setForm(f);
+    setFields((f.fields as FormField[]) ?? []);
+    setTitle(f.title);
+    setDescription(f.description);
+    setDirty(false);
+  }, [id]);
+
+  useEffect(() => {
+    loadForm();
+  }, [loadForm]);
+
+  const loadSubs = useCallback(async () => {
+    setSubs(null);
+    const res = await fetch(`/api/forms/${id}/submissions`, { cache: "no-store" });
+    if (res.ok) setSubs((await res.json()).submissions ?? []);
+  }, [id]);
+
+  /* ---------- local field ops ---------- */
+  const touch = (next: FormField[]) => {
+    setFields(next);
+    setDirty(true);
+  };
+  const addField = (type: FormFieldType) =>
+    touch([
+      ...fields,
+      {
+        id: newFieldId(),
+        type,
+        label: toolOf(type).label,
+        required: false,
+        options: type === "select" || type === "radio" ? ["Option 1", "Option 2"] : undefined,
+        placeholder: ["text", "textarea", "email", "phone", "url"].includes(type) ? "" : undefined,
+      },
+    ]);
+  const move = (i: number, d: -1 | 1) => {
+    const j = i + d;
+    if (j < 0 || j >= fields.length) return;
+    const next = [...fields];
+    [next[i], next[j]] = [next[j], next[i]];
+    touch(next);
+  };
+  const removeField = (i: number) => touch(fields.filter((_, x) => x !== i));
+  const openSettings = (f: FormField) => {
+    setEditing({ ...f });
+    setOptText((f.options ?? []).join("\n"));
+  };
+  const applySettings = () => {
+    if (!editing) return;
+    const next: FormField = {
+      ...editing,
+      options:
+        editing.type === "select" || editing.type === "radio"
+          ? optText.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 50)
+          : undefined,
+    };
+    touch(fields.map((f) => (f.id === next.id ? next : f)));
+    setEditing(null);
+  };
+
+  /* ---------- save / publish ---------- */
+  const save = async (extra?: Record<string, unknown>) => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/forms/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, description, fields, ...extra }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return toast.error(data.error || "Save failed");
+      setForm(data.form);
+      setDirty(false);
+      toast.success("Saved — public page is updated");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const publicUrl = form ? `${typeof window !== "undefined" ? window.location.origin : ""}/f/${form.slug}` : "";
+  const copy = (t: string, what: string) => navigator.clipboard.writeText(t).then(() => toast.success(`${what} copied`));
+
+
+  if (missing) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3">
+        <p className="font-semibold">Form not found</p>
+        <Button variant="outline" onClick={() => router.push("/forms")}>
+          <ArrowLeft className="mr-2 size-4" /> Back to forms
+        </Button>
+      </div>
+    );
+  }
+
+  if (!form) {
+    return (
+      <div className="mx-auto w-full max-w-5xl flex-1 space-y-3 p-4 sm:p-8">
+        <Skeleton className="h-10 w-2/3" />
+        <Skeleton className="h-96 w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {/* top bar */}
+      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-background/95 px-3 py-2.5 backdrop-blur sm:px-5">
+        <Button variant="ghost" size="icon" onClick={() => router.push("/forms")} aria-label="Back">
+          <ArrowLeft className="size-4" />
+        </Button>
+        <div className="min-w-0 flex-1">
+          <input
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              setDirty(true);
+            }}
+            className="w-full truncate bg-transparent text-lg font-semibold tracking-tight outline-none"
+            placeholder="Form title"
+          />
+        </div>
+        {dirty && <Badge variant="secondary">unsaved</Badge>}
+        <Button onClick={() => save()} disabled={saving} className="shrink-0">
+          {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
+          Save & publish
+        </Button>
+      </div>
+
+      <Tabs defaultValue="build" className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-3 pb-6 sm:px-5">
+        <TabsList className="my-3 grid w-full grid-cols-3 sm:w-96">
+          <TabsTrigger value="build">Build</TabsTrigger>
+          <TabsTrigger value="preview">Preview</TabsTrigger>
+          <TabsTrigger value="subs" onClick={loadSubs}>Submissions</TabsTrigger>
+        </TabsList>
+
+        {/* ============ BUILD ============ */}
+        <TabsContent value="build" className="flex-1">
+          <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
+            {/* toolbox */}
+            <div className="space-y-2 lg:sticky lg:top-[62px] lg:self-start">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Add field</p>
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+                {TOOLS.map((t) => (
+                  <Button
+                    key={t.type}
+                    variant="outline"
+                    className="h-auto justify-start gap-2.5 px-3 py-2.5 text-left"
+                    onClick={() => addField(t.type)}
+                  >
+                    <t.icon className="size-4 shrink-0 text-primary" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13px] font-medium">{t.label}</span>
+                      <span className="block truncate text-[10px] text-muted-foreground">{t.hint}</span>
+                    </span>
+                  </Button>
+                ))}
+              </div>
+              {/* publish card */}
+              <Card className="mt-2">
+                <CardHeader className="p-3 pb-1.5">
+                  <CardTitle className="text-sm">Public access</CardTitle>
+                  <CardDescription className="text-xs">Anyone with the link can submit.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-2 p-3 pt-0">
+                  <div className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1.5">
+                    <code className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">/f/{form.slug}</code>
+                    <Button variant="ghost" size="icon" className="size-6" onClick={() => copy(publicUrl, "Link")}>
+                      <Copy className="size-3" />
+                    </Button>
+                    <Button asChild variant="ghost" size="icon" className="size-6">
+                      <a href={publicUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="size-3" /></a>
+                    </Button>
+                  </div>
+                  <Button variant="outline" size="sm" className="w-full" onClick={() => copy(form.slug, "API token")}>
+                    <Copy className="mr-2 size-3.5" /> Copy API token (slug)
+                  </Button>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Accepting responses</span>
+                    <Switch
+                      checked={form.active}
+                      onCheckedChange={(v) =>
+                        void fetch(`/api/forms/${id}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ active: v }),
+                        }).then(() => setForm((p) => (p ? { ...p, active: v } : p)))
+                      }
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* canvas */}
+            <div className="space-y-2.5">
+              <div className="grid gap-1.5">
+                <Label className="text-xs text-muted-foreground">Description shown under the title</Label>
+                <Textarea
+                  value={description}
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    setDirty(true);
+                  }}
+                  placeholder="What is this form for?"
+                  className="min-h-[68px]"
+                />
+              </div>
+              {fields.length === 0 && (
+                <Card className="border-dashed">
+                  <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                    Empty canvas — pick a tool on the left to add the first field.
+                  </CardContent>
+                </Card>
+              )}
+              {fields.map((f, i) => (
+                <Card key={f.id} className="group relative">
+                  <CardContent className="space-y-2 p-4">
+                    <div className="flex items-center gap-1">
+                      <GripVertical className="size-4 text-muted-foreground/50" />
+                      <Badge variant="secondary" className="text-[10px]">
+                        <span className="mr-1.5 inline-flex items-center gap-1">
+                          <span className="font-black">{i + 1}</span> {toolOf(f.type).label}
+                        </span>
+                      </Badge>
+                      {f.required && <Badge className="text-[10px]">required</Badge>}
+                      <div className="ml-auto flex items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+                        <Button variant="ghost" size="icon" className="size-7" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up">
+                          <ChevronUp className="size-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="size-7" onClick={() => move(i, 1)} disabled={i === fields.length - 1} aria-label="Move down">
+                          <ChevronDown className="size-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="size-7" onClick={() => openSettings(f)} aria-label="Field settings">
+                          <Settings2 className="size-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="size-7" onClick={() => removeField(i)} aria-label="Delete field">
+                          <Trash2 className="size-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                    {/* live, exactly as the public page renders it */}
+                    <RenderField field={f} value={f.type === "checkbox" ? false : ""} onChange={() => {}} disabled />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ============ PREVIEW ============ */}
+        <TabsContent value="preview" className="flex-1">
+          <Card className="mx-auto max-w-xl shadow-md">
+            <CardHeader>
+              <CardTitle className="text-xl">{title || "Untitled form"}</CardTitle>
+              {description && <CardDescription className="whitespace-pre-wrap">{description}</CardDescription>}
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {fields.map((f) => (
+                <RenderField key={f.id} field={f} value={f.type === "checkbox" ? false : ""} onChange={() => {}} disabled />
+              ))}
+              <Button disabled className="h-10 w-full sm:w-auto">Submit</Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ============ SUBMISSIONS ============ */}
+        <TabsContent value="subs" className="flex-1">
+          <div className="mb-2 flex items-center gap-2">
+            <Badge variant="outline">{subs?.length ?? "…"} responses</Badge>
+            <Button variant="ghost" size="sm" onClick={loadSubs}>
+              <RefreshCw className="mr-1.5 size-3.5" /> Refresh
+            </Button>
+          </div>
+          {subs === null ? (
+            <div className="space-y-2"><Skeleton className="h-20 rounded-xl" /><Skeleton className="h-20 rounded-xl" /></div>
+          ) : subs.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
+                <Inbox className="size-8 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">No responses yet — share the public link!</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-2">
+              {subs.map((s, idx) => (
+                <Card key={s.id}>
+                  <CardHeader className="flex-row items-center gap-2 space-y-0 px-4 py-2.5">
+                    <Badge variant="secondary" className="tabular-nums">#{subs.length - idx}</Badge>
+                    <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                      {new Date(s.created_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7"
+                      title="Delete response"
+                      onClick={() =>
+                        void fetch(`/api/forms/${id}/submissions?sid=${s.id}`, { method: "DELETE" }).then(() => loadSubs())
+                      }
+                    >
+                      <Trash2 className="size-3.5 text-destructive" />
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="grid gap-1.5 px-4 pb-3 pt-0">
+                    {fields.map((f) => (
+                      <div key={f.id} className="grid grid-cols-[140px_1fr] items-baseline gap-2 text-sm">
+                        <span className="truncate text-xs text-muted-foreground">{f.label}</span>
+                        <span className="min-w-0 whitespace-pre-wrap break-words">
+                          {f.type === "checkbox"
+                            ? (s.data[f.id] ? "Yes" : "No")
+                            : String(s.data[f.id] ?? "") || "—"}
+                        </span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* -------- field settings dialog -------- */}
+      <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Field settings — {editing ? toolOf(editing.type).label : ""}</DialogTitle>
+          </DialogHeader>
+          {editing && (
+            <div className="grid gap-3 py-1">
+              <div className="grid gap-1.5">
+                <Label>Question / label</Label>
+                <Input value={editing.label} onChange={(e) => setEditing({ ...editing, label: e.target.value })} autoFocus />
+              </div>
+              {["text", "textarea", "email", "phone", "url", "number"].includes(editing.type) && (
+                <div className="grid gap-1.5">
+                  <Label>Placeholder</Label>
+                  <Input value={editing.placeholder ?? ""} onChange={(e) => setEditing({ ...editing, placeholder: e.target.value })} />
+                </div>
+              )}
+              <div className="grid gap-1.5">
+                <Label>Help text (optional)</Label>
+                <Input value={editing.helpText ?? ""} onChange={(e) => setEditing({ ...editing, helpText: e.target.value })} />
+              </div>
+              {(editing.type === "select" || editing.type === "radio") && (
+                <div className="grid gap-1.5">
+                  <Label>Options — one per line</Label>
+                  <Textarea value={optText} onChange={(e) => setOptText(e.target.value)} className="min-h-[110px]" />
+                </div>
+              )}
+              <div className="flex items-center justify-between rounded-md border border-border px-3 py-2.5">
+                <Label>Required field</Label>
+                <Switch checked={editing.required} onCheckedChange={(v) => setEditing({ ...editing, required: v })} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+            <Button onClick={applySettings}>Apply</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+export default FormBuilder;

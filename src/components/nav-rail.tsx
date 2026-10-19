@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { LogOut, MessageSquare, Users, Menu, Moon, Sun, KeyRound, Mail } from "lucide-react";
+import { LogOut, MessageSquare, Users, Menu, Moon, Sun, KeyRound, Mail, ClipboardList } from "lucide-react";
 import { JarvisLogo } from "@/components/jarvis-logo";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -21,6 +21,7 @@ import type { UserRow } from "@/lib/types";
 const NAV_ITEMS = [
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/email", label: "Email", icon: Mail },
+  { href: "/forms", label: "Forms", icon: ClipboardList },
   { href: "/groups", label: "Group Chat", icon: Users },
   { href: "/natural", label: "Jarvis", badge: "AI" },
   { href: "/ai-apis", label: "AI APIs", icon: KeyRound },
