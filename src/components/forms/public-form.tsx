@@ -28,8 +28,22 @@ export function PublicForm({ slug }: { slug: string }) {
         const { form } = await res.json();
         setTitle(form.title);
         setDescription(form.description);
-        setFields(form.fields ?? []);
+        const fs = (form.fields ?? []) as FormField[];
+        setFields(fs);
         setPhase("ready");
+        /* dynamic dropdowns / multi-selects: fetch their option lists from the table via API */
+        for (const f of fs) {
+          if (f.optionsSource?.mode === "table") {
+            fetch(`/api/public/forms/${slug}/options?field=${encodeURIComponent(f.id)}`)
+              .then((r) => (r.ok ? r.json() : { options: [] }))
+              .then((d) => {
+                if (Array.isArray(d.options) && d.options.length) {
+                  setFields((prev) => prev.map((x) => (x.id === f.id ? { ...x, options: d.options } : x)));
+                }
+              })
+              .catch(() => undefined);
+          }
+        }
       })
       .catch(() => toast.error("Could not load this form"));
   }, [slug]);

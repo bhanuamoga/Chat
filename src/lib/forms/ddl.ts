@@ -119,3 +119,8 @@ export function deriveColumns(
     return { col, label: f.label, type: f.type };
   });
 }
+
+/** a raw SQL identifier the user typed: letters/digits/underscore, no leading digit */
+export function isIdent(x: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(x) && x.length <= 63;
+}

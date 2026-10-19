@@ -11,7 +11,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/db";
-import { deriveColumns, ensureFormDataTable, ensureFormsSchema, tableNameFor, type FormField } from "@/lib/forms/ddl";
+import { ensureFormsSchema, sanitizeIdent, type FormField } from "@/lib/forms/ddl";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
   const { rows } = await pool.query("SELECT id, user_id, title, fields, active, table_name FROM forms WHERE slug = $1 LIMIT 1", [slug]);
   if (!rows.length) return NextResponse.json({ error: "Form not found" }, { status: 404 });
   if (!rows[0].active) return NextResponse.json({ error: "Form is closed" }, { status: 410 });
-  const tableName: string = rows[0].table_name || tableNameFor(rows[0].title, rows[0].id);
+  const tableName: string | null = rows[0].table_name ?? null;
 
   const rawBody = await req.json().catch(() => null);
   if (!rawBody) return NextResponse.json({ error: "JSON body required" }, { status: 400 });
@@ -56,6 +56,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
       if ((field.type === "select" || field.type === "radio") && s && field.options?.length && !field.options.includes(s)) {
         return NextResponse.json({ error: `Invalid option for "${field.label}"` }, { status: 400 });
       }
+      if (field.type === "multiselect" && s && field.options?.length) {
+        const parts = s.split(",").map((x) => x.trim()).filter(Boolean);
+        for (const part of parts) {
+          if (!field.options.includes(part)) {
+            return NextResponse.json({ error: `Invalid option for "${field.label}"` }, { status: 400 });
+          }
+        }
+      }
       if (field.type === "number" && s && Number.isNaN(Number(s))) {
         return NextResponse.json({ error: `"${field.label}" must be a number` }, { status: 400 });
       }
@@ -72,30 +80,26 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ slug: stri
     [rows[0].id, rows[0].user_id, JSON.stringify(data), JSON.stringify(meta)]
   );
 
-  /* dynamic-table insert: every field → its own real column */
-  try {
-    const cols = deriveColumns(fields);
-    await ensureFormDataTable(tableName, cols);
-    const names: string[] = [];
-    const values: unknown[] = [];
-    for (const field of fields) {
-      const col = cols.find((c) => c.label === field.label && c.type === field.type)?.col;
-      if (!col) continue;
-      names.push(`"${col}"`);
-      values.push(field.type === "checkbox" ? Boolean(data[field.id]) : String(data[field.id] ?? ""));
+  /* owner-typed table: write a row into the EXISTING table (no creation!),
+     mapping each field to the column the owner set in the builder */
+  if (tableName) {
+    try {
+      const names: string[] = [];
+      const values: unknown[] = [];
+      for (const field of fields) {
+        const col = field.col?.trim() || sanitizeIdent(field.label);
+        names.push(`"${col}"`);
+        values.push(field.type === "checkbox" ? Boolean(data[field.id]) : String(data[field.id] ?? ""));
+      }
+      if (names.length) {
+        const ph = values.map((_, i) => `$${i + 1}`).join(", ");
+        await pool.query(`INSERT INTO "${tableName}" (${names.join(", ")}) VALUES (${ph})`, values);
+      }
+    } catch (e) {
+      /* table missing / column missing / type clash — entry is safely in
+         form_submissions already; log so the owner can fix the mapping */
+      console.error(`[forms] ${tableName} insert failed (mirror already saved):`, e);
     }
-    if (names.length) {
-      const ph = values.map((_, i) => `$${i + 1}`).join(", ");
-      await pool.query(`INSERT INTO "${tableName}" (${names.join(", ")}) VALUES (${ph})`, values);
-    } else {
-      await pool.query(`INSERT INTO "${tableName}" DEFAULT VALUES`);
-    }
-    /* make sure the metadata keeps the table name backfilled */
-    if (!rows[0].table_name) {
-      await pool.query("UPDATE forms SET table_name = $1 WHERE id = $2", [tableName, rows[0].id]);
-    }
-  } catch (e) {
-    console.error("[forms] backing-table insert failed (entry still saved in form_submissions):", e);
   }
   return NextResponse.json({ ok: true, message: "Saved" });
 }

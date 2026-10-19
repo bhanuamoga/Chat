@@ -41,6 +41,7 @@ const TOOLS: { type: FormFieldType; label: string; icon: typeof Type; hint: stri
   { type: "date", label: "Date", icon: Calendar, hint: "date picker" },
   { type: "checkbox", label: "Checkbox", icon: CheckCircle2, hint: "yes / no" },
   { type: "select", label: "Dropdown", icon: ListChecks, hint: "pick one option" },
+  { type: "multiselect", label: "Multi select", icon: ToggleLeft, hint: "pick many options" },
   { type: "radio", label: "Choice", icon: Radio, hint: "options as radios" },
 ];
 
@@ -73,6 +74,7 @@ export function FormBuilder({ id }: { id: string }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [tableName, setTableName] = useState("");
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<FormField | null>(null);
   const [optText, setOptText] = useState("");
@@ -89,6 +91,7 @@ export function FormBuilder({ id }: { id: string }) {
     setFields((f.fields as FormField[]) ?? []);
     setTitle(f.title);
     setDescription(f.description);
+    setTableName((f.table_name as string | null) ?? "");
     setDirty(false);
   }, [id]);
 
@@ -119,7 +122,9 @@ export function FormBuilder({ id }: { id: string }) {
         type,
         label: toolOf(type).label,
         required: false,
-        options: type === "select" || type === "radio" ? ["Option 1", "Option 2"] : undefined,
+        col: "",
+        options: type === "select" || type === "radio" || type === "multiselect" ? ["Option 1", "Option 2"] : undefined,
+        optionsSource: type === "select" || type === "radio" || type === "multiselect" ? { mode: "static" } : undefined,
         placeholder: ["text", "textarea", "email", "phone", "url"].includes(type) ? "" : undefined,
       },
     ]);
@@ -140,7 +145,7 @@ export function FormBuilder({ id }: { id: string }) {
     const next: FormField = {
       ...editing,
       options:
-        editing.type === "select" || editing.type === "radio"
+        editing.type === "select" || editing.type === "radio" || editing.type === "multiselect"
           ? optText.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 50)
           : undefined,
     };
@@ -165,6 +170,18 @@ export function FormBuilder({ id }: { id: string }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const saveTableName = async () => {
+    const res = await fetch(`/api/forms/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ table_name: tableName.trim() || null }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return toast.error(data.error || "Invalid table name");
+    setForm(data.form);
+    toast.success(tableName.trim() ? `Submissions will write into "${tableName.trim()}"` : "Table link cleared");
   };
 
   const publicUrl = form ? `${typeof window !== "undefined" ? window.location.origin : ""}/f/${form.slug}` : "";
@@ -271,15 +288,30 @@ export function FormBuilder({ id }: { id: string }) {
               <Card className="mt-2">
                 <CardHeader className="p-3 pb-1.5">
                   <CardTitle className="text-sm">Database</CardTitle>
-                  <CardDescription className="text-xs">Every submit lands as a row here — one column per field.</CardDescription>
+                  <CardDescription className="text-xs">Type the EXISTING table name — submits write rows into it. No tables are created.</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-2 p-3 pt-0">
-                  <div className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1.5">
-                    <code className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">{form.table_name ?? "created on first save"}</code>
-                    <Button variant="ghost" size="icon" className="size-6" onClick={() => copy(form.table_name ?? "", "Table name")}>
-                      <Copy className="size-3" />
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      value={tableName}
+                      onChange={(e) => setTableName(e.target.value)}
+                      placeholder="e.g. leads"
+                      className="h-8 flex-1 font-mono text-xs"
+                      aria-label="Linked table name"
+                    />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="h-8 shrink-0"
+                      onClick={saveTableName}
+                      disabled={(form.table_name ?? "") === tableName.trim()}
+                    >
+                      Link
                     </Button>
                   </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    letters / digits / underscore only · row insert uses the per-field <b>DB column</b> you set below
+                  </p>
                   <div className="max-h-28 space-y-1 overflow-y-auto">
                     {fields.map((f) => (
                       <div key={f.id} className="flex items-center gap-1.5 text-[11px]">
@@ -289,9 +321,7 @@ export function FormBuilder({ id }: { id: string }) {
                     ))}
                     {fields.length === 0 && <p className="text-[11px] text-muted-foreground">add fields to see columns</p>}
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    Save &amp; publish creates/extends the table — nothing is ever dropped (old answers stay).
-                  </p>
+
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Accepting responses</span>
                     <Switch
@@ -477,11 +507,61 @@ export function FormBuilder({ id }: { id: string }) {
                 <Label>Help text (optional)</Label>
                 <Input value={editing.helpText ?? ""} onChange={(e) => setEditing({ ...editing, helpText: e.target.value })} />
               </div>
-              {(editing.type === "select" || editing.type === "radio") && (
-                <div className="grid gap-1.5">
-                  <Label>Options — one per line</Label>
-                  <Textarea value={optText} onChange={(e) => setOptText(e.target.value)} className="min-h-[110px]" />
-                </div>
+              <div className="grid gap-1.5">
+                <Label>DB column this field writes into (existing column of the linked table)</Label>
+                <Input
+                  value={(editing as { col?: string }).col ?? ""}
+                  onChange={(e) => setEditing({ ...(editing as object), col: e.target.value } as FormField)}
+                  placeholder={editing.label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "column_name"}
+                  className="font-mono text-xs"
+                />
+                <p className="text-[10px] text-muted-foreground">leave empty to auto-derive from the label</p>
+              </div>
+              {(editing.type === "select" || editing.type === "radio" || editing.type === "multiselect") && (
+                <>
+                  <div className="grid gap-1.5">
+                    <Label>Where do the options come from?</Label>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant={((editing as { optionsSource?: { mode: string } }).optionsSource?.mode ?? "static") === "static" ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setEditing({ ...(editing as object), optionsSource: { mode: "static" } } as FormField)}
+                      >
+                        Static list
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={(editing as { optionsSource?: { mode: string } }).optionsSource?.mode === "table" ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setEditing({ ...(editing as object), optionsSource: { mode: "table", column: (editing as { col?: string }).col || "" } } as FormField)}
+                      >
+                        From linked table
+                      </Button>
+                    </div>
+                  </div>
+                  {(editing as { optionsSource?: { mode: "table"; column: string } }).optionsSource?.mode === "table" ? (
+                    <div className="grid gap-1.5">
+                      <Label>Column to read options from (distinct values, live via API)</Label>
+                      <Input
+                        value={(editing as { optionsSource?: { mode: "table"; column: string } }).optionsSource?.column ?? ""}
+                        onChange={(e) =>
+                          setEditing({ ...(editing as object), optionsSource: { mode: "table", column: e.target.value } } as FormField)
+                        }
+                        placeholder="e.g. category"
+                        className="font-mono text-xs"
+                      />
+                      <p className="text-[10px] text-muted-foreground">the public page calls the options API and shows up-to-date values</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-1.5">
+                      <Label>Options — one per line</Label>
+                      <Textarea value={optText} onChange={(e) => setOptText(e.target.value)} className="min-h-[110px]" />
+                    </div>
+                  )}
+                </>
               )}
               <div className="flex items-center justify-between rounded-md border border-border px-3 py-2.5">
                 <Label>Required field</Label>

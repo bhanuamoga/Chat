@@ -90,6 +90,37 @@ export function RenderField({
           </select>
         </div>
       );
+    case "multiselect": {
+      const picked = typeof value === "string" && value ? value.split(",").map((x) => x.trim()) : [];
+      return (
+        <div className="grid gap-1.5">
+          {inputShell}
+          <div className="flex flex-col gap-2">
+            {(field.options ?? []).map((o) => {
+              const on = picked.includes(o);
+              return (
+                <div key={o} className="flex items-start gap-2.5">
+                  <Checkbox
+                    id={`${field.id}-${o}`}
+                    checked={on}
+                    disabled={disabled}
+                    className="mt-0.5"
+                    onCheckedChange={(v) => {
+                      const next = v === true ? [...picked, o] : picked.filter((x) => x !== o);
+                      onChange(next.join(", "));
+                    }}
+                  />
+                  <Label htmlFor={`${field.id}-${o}`} className="text-sm font-normal leading-snug">{o}</Label>
+                </div>
+              );
+            })}
+            {(field.options ?? []).length === 0 && (
+              <span className="text-xs text-muted-foreground">No options configured</span>
+            )}
+          </div>
+        </div>
+      );
+    }
     case "radio":
       return (
         <div className="grid gap-1.5">

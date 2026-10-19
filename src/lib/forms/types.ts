@@ -10,6 +10,7 @@ export type FormFieldType =
   | "date"
   | "checkbox"
   | "select"
+  | "multiselect"
   | "radio";
 
 export interface FormField {
@@ -19,8 +20,13 @@ export interface FormField {
   placeholder?: string;
   helpText?: string;
   required: boolean;
-  /** select + radio only */
+  /** the EXISTING column this field writes into (user types it) */
+  col?: string;
+  /** select / multiselect / radio: static options — or dynamic from the linked table */
   options?: string[];
+  optionsSource?:
+    | { mode: "static" }
+    | { mode: "table"; column: string };
 }
 
 export const newFieldId = () =>
