@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { pool } from "@/db";
-import { ensureFormsSchema, newSlug } from "@/lib/forms/ddl";
+import { deriveColumns, ensureFormDataTable, ensureFormsSchema, newSlug, tableNameFor } from "@/lib/forms/ddl";
 
 export const dynamic = "force-dynamic";
 
@@ -40,10 +40,11 @@ export async function POST(req: NextRequest) {
   const description = (body.description || "").trim();
 
   const { rows } = await pool.query(
-    `INSERT INTO forms (user_id, title, description, slug)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO forms (user_id, title, description, slug, table_name)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING id, title, description, slug, active, fields, created_at, updated_at`,
-    [userId, title.slice(0, 200), description.slice(0, 2000), newSlug()]
+    [userId, title.slice(0, 200), description.slice(0, 2000), newSlug(), tableNameFor(title, crypto.randomUUID())]
   );
+  /* the backing table is created on first save once fields exist (empty now) */
   return NextResponse.json({ form: rows[0] });
 }

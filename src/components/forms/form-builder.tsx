@@ -53,14 +53,16 @@ interface FormRow {
   slug: string;
   active: boolean;
   fields: FormField[];
+  table_name?: string | null;
   created_at: string;
   updated_at: string;
 }
 
 interface SubmissionRow {
   id: string;
-  data: Record<string, unknown>;
   created_at: string;
+  data?: Record<string, unknown>;
+  [col: string]: unknown;
 }
 
 export function FormBuilder({ id }: { id: string }) {
@@ -76,6 +78,7 @@ export function FormBuilder({ id }: { id: string }) {
   const [optText, setOptText] = useState("");
   const [preview, setPreview] = useState(false);
   const [subs, setSubs] = useState<SubmissionRow[] | null>(null);
+  const [subsTable, setSubsTable] = useState<string | null>(null);
 
   const loadForm = useCallback(async () => {
     const res = await fetch(`/api/forms/${id}`, { cache: "no-store" });
@@ -96,7 +99,11 @@ export function FormBuilder({ id }: { id: string }) {
   const loadSubs = useCallback(async () => {
     setSubs(null);
     const res = await fetch(`/api/forms/${id}/submissions`, { cache: "no-store" });
-    if (res.ok) setSubs((await res.json()).submissions ?? []);
+    if (res.ok) {
+      const payload = await res.json();
+      setSubs(payload.submissions ?? []);
+      setSubsTable(payload.table ?? null);
+    }
   }, [id]);
 
   /* ---------- local field ops ---------- */
@@ -257,6 +264,34 @@ export function FormBuilder({ id }: { id: string }) {
                   <Button variant="outline" size="sm" className="w-full" onClick={() => copy(form.slug, "API token")}>
                     <Copy className="mr-2 size-3.5" /> Copy API token (slug)
                   </Button>
+                </CardContent>
+              </Card>
+
+              {/* database card — the backing table this form writes into */}
+              <Card className="mt-2">
+                <CardHeader className="p-3 pb-1.5">
+                  <CardTitle className="text-sm">Database</CardTitle>
+                  <CardDescription className="text-xs">Every submit lands as a row here — one column per field.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-2 p-3 pt-0">
+                  <div className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1.5">
+                    <code className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">{form.table_name ?? "created on first save"}</code>
+                    <Button variant="ghost" size="icon" className="size-6" onClick={() => copy(form.table_name ?? "", "Table name")}>
+                      <Copy className="size-3" />
+                    </Button>
+                  </div>
+                  <div className="max-h-28 space-y-1 overflow-y-auto">
+                    {fields.map((f) => (
+                      <div key={f.id} className="flex items-center gap-1.5 text-[11px]">
+                        <span className="min-w-0 flex-1 truncate text-muted-foreground">{f.label}</span>
+                        <code className="shrink-0 rounded bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">{(f as { col?: string }).col ?? "—"}</code>
+                      </div>
+                    ))}
+                    {fields.length === 0 && <p className="text-[11px] text-muted-foreground">add fields to see columns</p>}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Save &amp; publish creates/extends the table — nothing is ever dropped (old answers stay).
+                  </p>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Accepting responses</span>
                     <Switch
@@ -364,40 +399,57 @@ export function FormBuilder({ id }: { id: string }) {
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-2">
-              {subs.map((s, idx) => (
-                <Card key={s.id}>
-                  <CardHeader className="flex-row items-center gap-2 space-y-0 px-4 py-2.5">
-                    <Badge variant="secondary" className="tabular-nums">#{subs.length - idx}</Badge>
-                    <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                      {new Date(s.created_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7"
-                      title="Delete response"
-                      onClick={() =>
-                        void fetch(`/api/forms/${id}/submissions?sid=${s.id}`, { method: "DELETE" }).then(() => loadSubs())
-                      }
-                    >
-                      <Trash2 className="size-3.5 text-destructive" />
-                    </Button>
-                  </CardHeader>
-                  <CardContent className="grid gap-1.5 px-4 pb-3 pt-0">
-                    {fields.map((f) => (
-                      <div key={f.id} className="grid grid-cols-[140px_1fr] items-baseline gap-2 text-sm">
-                        <span className="truncate text-xs text-muted-foreground">{f.label}</span>
-                        <span className="min-w-0 whitespace-pre-wrap break-words">
-                          {f.type === "checkbox"
-                            ? (s.data[f.id] ? "Yes" : "No")
-                            : String(s.data[f.id] ?? "") || "—"}
-                        </span>
-                      </div>
+            <div className="space-y-1">
+              {subsTable && (
+                <p className="text-xs text-muted-foreground">
+                  table <code className="rounded bg-muted/60 px-1.5 py-0.5">{subsTable}</code>
+                </p>
+              )}
+              {/* clean column grid: one column per FIELD, labeled headers */}
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full min-w-max border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-muted/50 text-left">
+                      <th className="whitespace-nowrap border-b border-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Submitted at</th>
+                      {fields.map((f) => (
+                        <th key={f.id} className="max-w-[220px] border-b border-border px-3 py-2 text-xs font-semibold">{f.label}</th>
+                      ))}
+                      <th className="w-10 border-b border-border px-2 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {subs.map((rowV) => (
+                      <tr key={rowV.id} className="odd:bg-muted/20 transition-colors hover:bg-accent/40">
+                        <td className="whitespace-nowrap border-b border-border/50 px-3 py-2 text-xs tabular-nums text-muted-foreground">
+                          {new Date(rowV.created_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}
+                        </td>
+                        {fields.map((f) => {
+                          const col = (f as { col?: string }).col;
+                          const cell = col ? rowV[col] : (rowV.data?.[f.id]);
+                          return (
+                            <td key={f.id} className="max-w-[220px] truncate border-b border-border/50 px-3 py-2" title={String(cell ?? "")}>
+                              {f.type === "checkbox" ? (cell ? "Yes" : "No") : String(cell ?? "—") || "—"}
+                            </td>
+                          );
+                        })}
+                        <td className="border-b border-border/50 px-2 py-2 text-center">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7"
+                            title="Delete response"
+                            onClick={() =>
+                              void fetch(`/api/forms/${id}/submissions?sid=${rowV.id}`, { method: "DELETE" }).then(() => loadSubs())
+                            }
+                          >
+                            <Trash2 className="size-3.5 text-destructive" />
+                          </Button>
+                        </td>
+                      </tr>
                     ))}
-                  </CardContent>
-                </Card>
-              ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </TabsContent>

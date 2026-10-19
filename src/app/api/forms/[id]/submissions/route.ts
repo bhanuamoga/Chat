@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { pool } from "@/db";
-import { ensureFormsSchema } from "@/lib/forms/ddl";
+import { ensureFormsSchema, type FormField } from "@/lib/forms/ddl";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +19,19 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   const userId = await needUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await ctx.params;
+  /* owner check + resolve the backing table (real columns per field) */
+  const own = await pool.query("SELECT fields, table_name FROM forms WHERE id = $1 AND user_id = $2 LIMIT 1", [id, userId]);
+  if (!own.rows.length) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const fields = (own.rows[0].fields as FormField[]) ?? [];
+  const tableName = own.rows[0].table_name as string | null;
+
+  if (tableName) {
+    const { rows } = await pool.query(
+      `SELECT * FROM "${tableName}" ORDER BY created_at DESC LIMIT 500`
+    );
+    return NextResponse.json({ submissions: rows, columns: fields, table: tableName });
+  }
+  /* legacy shape (older forms with no backing table yet) */
   const { rows } = await pool.query(
     `SELECT s.id, s.data, s.meta, s.created_at
        FROM form_submissions s
@@ -28,7 +41,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       LIMIT 500`,
     [id, userId]
   );
-  return NextResponse.json({ submissions: rows });
+  return NextResponse.json({ submissions: rows, columns: fields, table: null });
 }
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
